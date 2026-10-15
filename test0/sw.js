@@ -1,6 +1,6 @@
 // 앱 껍데기(화면 틀)를 폰에 저장해 두고 바로 띄운다. 뒤에서 새 껍데기를 받아 다음번에 쓴다.
 // 데이터 파일(data/)과 창구 주소(config.json)는 여기서 손대지 않는다(항상 깃허브에서 새로 받음).
-const CACHE = "dongpa-test0-v2";
+const CACHE = "dongpa-test0-v3";
 const SHELL = ["./", "index.html", "b.html", "chang.html", "app.js", "chang.js", "style.css", "manifest-a.json", "manifest-b.json"];
 
 self.addEventListener("install", (e) => {
