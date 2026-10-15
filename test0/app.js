@@ -23,7 +23,7 @@ function getKey() {
   const m = /(?:^#|&)k=([A-Za-z0-9_-]{43})/.exec(location.hash);
   const st = load();
   if (m) { st.key = m[1]; save(st); return { key: m[1], from: "링크" }; }
-  if (st.key) return { key: st.key, from: "이 폰의 저장본" };
+  if (st.key) return { key: st.key, from: "이 폰의 저장본" + (st.keyVia ? " · " + st.keyVia : "") };
   return { key: null, from: "없음" };
 }
 
@@ -127,6 +127,39 @@ function showResult() {
   box.append(copy, again, clear, forget);
 }
 
+// ---------- 열쇠가 없을 때: PIN을 넣으면 창구가 보기 열쇠를 건네준다 (홈 화면 앱은 사파리와 저장 공간이 따로라서)
+async function askPin() {
+  const app = document.getElementById("app");
+  let url = null;
+  try { url = (await (await fetch("config.json", { cache: "no-store" })).json())["창구"]; } catch (e) { /* 아래에서 안내 */ }
+  if (!url) {
+    app.replaceChildren(el("p", "열쇠가 없습니다. 형님이 보낸 링크(#k= 포함)로 열어 주세요.", "bad"));
+    return;
+  }
+  const input = el("input");
+  input.inputMode = "numeric"; input.maxLength = 6; input.autocomplete = "one-time-code"; input.placeholder = "PIN 6자리";
+  const btn = el("button", "등록");
+  const msg = el("p", null, "muted");
+  btn.onclick = async () => {
+    btn.disabled = true; msg.textContent = "창구에 묻는 중…";
+    const t0 = performance.now();
+    try {
+      const res = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ a: "register", pin: input.value.trim() }) });
+      const r = await res.json();
+      const ms = Math.round(performance.now() - t0);
+      if (r.ok && r.viewKey) {
+        const st = load(); st.key = r.viewKey; st.phoneKey = r.phoneKey; st.keyVia = `PIN 등록으로 받음 (${ms} ms)`; save(st);
+        location.reload();
+      } else {
+        msg.textContent = `${r.오류 || "실패"} (${ms} ms)`; btn.disabled = false;
+      }
+    } catch (e) {
+      msg.textContent = "창구 연결 실패: " + e.message; btn.disabled = false;
+    }
+  };
+  app.replaceChildren(el("p", "이 폰에 열쇠가 없습니다. 형님께 받은 PIN 6자리를 넣어 주세요."), input, btn, msg);
+}
+
 // ---------- 순서
 async function fetchFile(url) {
   const res = await fetch(url, { cache: "no-cache" });
@@ -173,8 +206,8 @@ async function main() {
       delete t["저장본 표시"];
       info.error = "새 파일을 못 풂";
     }
-  } else if (fresh && !key) {
-    document.getElementById("app").replaceChildren(el("p", "열쇠가 없습니다. 형님이 보낸 링크(#k= 포함)로 열어 주세요.", "bad"));
+  } else if (!key) {
+    await askPin();
   }
 
   await rawJob;
