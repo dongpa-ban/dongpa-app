@@ -1,0 +1,8 @@
+{
+  "name": "동파 시험 A",
+  "short_name": "동파시험A",
+  "display": "standalone",
+  "scope": "./",
+  "background_color": "#ffffff",
+  "theme_color": "#0f2c52"
+}
