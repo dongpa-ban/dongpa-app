@@ -23,7 +23,7 @@ function getKey() {
   const m = /(?:^#|&)k=([A-Za-z0-9_-]{43})/.exec(location.hash);
   const st = load();
   if (m) { st.key = m[1]; save(st); return { key: m[1], from: "링크" }; }
-  if (st.key) return { key: st.key, from: "이 폰의 저장본" };
+  if (st.key) return { key: st.key, from: "이 폰의 저장본" + (st.keyVia ? " · " + st.keyVia : "") };
   return { key: null, from: "없음" };
 }
 
@@ -51,6 +51,15 @@ function table(rows) {
   }
   return tb;
 }
+// 국제 표준시(…Z)를 한국 시각 "10/15 20:05:03 (3분 전)"으로
+function kst(iso) {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  if (isNaN(d)) return String(iso);
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).formatToParts(d).map((x) => [x.type, x.value]));
+  const min = Math.round((Date.now() - d.getTime()) / 60000);
+  return `${p.month}/${p.day} ${p.hour}:${p.minute}:${p.second}` + (min >= 0 ? ` (${min}분 전)` : "");
+}
 const money = (v) => "$" + Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function render(d, label) {
@@ -73,7 +82,7 @@ function render(d, label) {
     o["수량"],
     o["D-Day"] != null ? "D-" + o["D-Day"] : "",
   ])));
-  app.appendChild(el("p", `로봇 마지막 성공: ${d["로봇마지막성공"]} · 파일 만든 시각: ${d["만든시각"]}`, "muted"));
+  app.appendChild(el("p", `로봇 마지막 성공: ${kst(d["로봇마지막성공"])} · 파일 만든 시각: ${kst(d["만든시각"])} (한국)`, "muted"));
 }
 
 // ---------- 결과 칸
@@ -84,6 +93,7 @@ function showResult() {
   const firstPaint = t["저장본 표시"] ?? t["새 화면 표시"];
   const rows = [
     ["시험판", VARIANT],
+    ["지금 (한국 시각)", kst(new Date().toISOString()).replace(/ \(.*\)$/, "")],
     ["기기", navigator.userAgent.replace(/^Mozilla\/5\.0 \(([^)]*)\).*$/, "$1").slice(0, 60)],
     ["홈 화면 앱으로 열림", info.standalone ? "예" : "아니요 (브라우저)"],
     ["열쇠 출처", info.keyFrom],
@@ -92,10 +102,10 @@ function showResult() {
     ["저장본으로 첫 화면", t["저장본 표시"] != null ? t["저장본 표시"] + " ms" : "저장본 없음"],
     ["새 파일 받음", t["새 파일 받음"] != null ? t["새 파일 받음"] + " ms" : (info.pagesError || "-")],
     ["새 화면 표시", t["새 화면 표시"] != null ? t["새 화면 표시"] + " ms" : "-"],
-    ["깃허브 화면 파일 만든 시각", info.pagesMade || "-"],
+    ["깃허브 화면 파일 만든 시각 (한국)", kst(info.pagesMade)],
     ["깃허브 화면 캐시", info.pagesCache || "-"],
     ["raw 주소 받음", t["raw 받음"] != null ? t["raw 받음"] + " ms" : (info.rawError || "-")],
-    ["raw 파일 만든 시각", info.rawMade || "-"],
+    ["raw 파일 만든 시각 (한국)", kst(info.rawMade)],
     ["raw 캐시", info.rawCache || "-"],
   ];
   for (const [k, v] of rows) {
@@ -125,6 +135,39 @@ function showResult() {
   const forget = el("button", "열쇠 지우기");
   forget.onclick = () => { save({}); location.replace(location.pathname); };
   box.append(copy, again, clear, forget);
+}
+
+// ---------- 열쇠가 없을 때: PIN을 넣으면 창구가 보기 열쇠를 건네준다 (홈 화면 앱은 사파리와 저장 공간이 따로라서)
+async function askPin() {
+  const app = document.getElementById("app");
+  let url = null;
+  try { url = (await (await fetch("config.json", { cache: "no-store" })).json())["창구"]; } catch (e) { /* 아래에서 안내 */ }
+  if (!url) {
+    app.replaceChildren(el("p", "열쇠가 없습니다. 형님이 보낸 링크(#k= 포함)로 열어 주세요.", "bad"));
+    return;
+  }
+  const input = el("input");
+  input.inputMode = "numeric"; input.maxLength = 6; input.autocomplete = "one-time-code"; input.placeholder = "PIN 6자리";
+  const btn = el("button", "등록");
+  const msg = el("p", null, "muted");
+  btn.onclick = async () => {
+    btn.disabled = true; msg.textContent = "창구에 묻는 중…";
+    const t0 = performance.now();
+    try {
+      const res = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ a: "register", pin: input.value.trim() }) });
+      const r = await res.json();
+      const ms = Math.round(performance.now() - t0);
+      if (r.ok && r.viewKey) {
+        const st = load(); st.key = r.viewKey; st.phoneKey = r.phoneKey; st.keyVia = `PIN 등록으로 받음 (${ms} ms)`; save(st);
+        location.reload();
+      } else {
+        msg.textContent = `${r.오류 || "실패"} (${ms} ms)`; btn.disabled = false;
+      }
+    } catch (e) {
+      msg.textContent = "창구 연결 실패: " + e.message; btn.disabled = false;
+    }
+  };
+  app.replaceChildren(el("p", "이 폰에 열쇠가 없습니다. 형님께 받은 PIN 6자리를 넣어 주세요."), input, btn, msg);
 }
 
 // ---------- 순서
@@ -173,8 +216,8 @@ async function main() {
       delete t["저장본 표시"];
       info.error = "새 파일을 못 풂";
     }
-  } else if (fresh && !key) {
-    document.getElementById("app").replaceChildren(el("p", "열쇠가 없습니다. 형님이 보낸 링크(#k= 포함)로 열어 주세요.", "bad"));
+  } else if (!key) {
+    await askPin();
   }
 
   await rawJob;

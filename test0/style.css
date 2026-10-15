@@ -20,3 +20,4 @@ td.n { text-align: right; font-variant-numeric: tabular-nums; }
 .bad { color: var(--bad); font-weight: 700; }
 button { font: inherit; padding: 10px 12px; margin: 8px 6px 0 0; border-radius: 8px; border: 1px solid var(--line); background: var(--soft); color: var(--fg); }
 textarea { width: 100%; height: 0; opacity: 0; position: absolute; left: -9999px; }
+input { font: inherit; font-size: 20px; letter-spacing: 4px; padding: 10px; width: 9em; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
