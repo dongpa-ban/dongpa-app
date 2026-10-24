@@ -20,6 +20,7 @@
   var C = DongpaCalc;
   var Q = new URLSearchParams(location.search);
   var KEY = 'dongpa.v1.';
+  var APP_VERSION = '81f1efb-4';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
 
   /* ── 폰에 저장 (못 쓰는 폰·사생활 보호 모드에서도 화면은 그대로 뜨게) ── */
   function load(k) { try { var t = localStorage.getItem(KEY + k); return t ? JSON.parse(t) : null; } catch (e) { return null; } }
@@ -1371,7 +1372,27 @@
     if (b) b.textContent = text;
   }
 
+  /**
+   * 새 화면이 올라갔으면 한 번 새로 연다 (10/24 형님). 깃허브 페이지는 파일을 10분까지 저장해 두게 해서
+   * 껐다 켜도 옛 화면이 뜰 수 있다 → version.json을 저장본 없이 물어 버전이 다르면 ?v=새 버전 주소로(새 주소라 새로 받는다).
+   * 같은 버전으로는 한 번만 (새로 열어도 옛 파일이면 그대로 둔다 — 계속 다시 열지 않게)
+   */
+  function checkVersion() {
+    if (APP_VERSION === 'dev') return;
+    fetch('version.json', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+      if (!j || !j.v || j.v === APP_VERSION) return;
+      var tried = null;
+      try { tried = sessionStorage.getItem('dongpa.vtried'); } catch (e) { /* 그냥 */ }
+      if (tried === j.v) return;
+      try { sessionStorage.setItem('dongpa.vtried', j.v); } catch (e) { /* 그냥 */ }
+      var q = new URLSearchParams(location.search);
+      q.set('v', j.v);
+      location.replace(location.pathname + '?' + q.toString() + location.hash);
+    }).catch(function () { /* 못 물으면 지금 화면 그대로 */ });
+  }
+
   function start() {
+    checkVersion();
     root = document.getElementById('app');
     root.addEventListener('click', onClick);
     // 새 링크(# 뒤 열쇠)로 바꿔 열면 처음부터 다시 (같은 페이지라 저절로는 안 다시 읽는다)
