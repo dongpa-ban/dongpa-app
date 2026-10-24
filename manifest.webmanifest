@@ -1,7 +1,6 @@
 {
  "name": "동파앱",
  "short_name": "동파앱",
- "start_url": ".",
  "display": "standalone",
  "background_color": "#000000",
  "theme_color": "#000000",
