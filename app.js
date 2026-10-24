@@ -260,7 +260,10 @@
     });
     return '<section class="card"><div class="ch"><h2 class="ct">어젯밤 결과</h2><span class="meta">' + C.mdw(ln.session) + ' 종가 <span class="n" style="color:#fff">' + C.price(ln.close) + '</span></span></div>' +
       (os.length ? '<div class="sum"><span class="pill up">체결 ' + filled + '</span><span class="pill">미체결 ' + missed + '</span>' +
-        '<span class="meta">실현손익 <span class="n ' + (pnl > 0 ? 'up' : pnl < 0 ? 'down' : '') + '">' + C.usd(pnl, true) + '</span></span></div>' + rows.join('')
+        '<span class="meta">실현손익 <span class="n ' + (pnl > 0 ? 'up' : pnl < 0 ? 'down' : '') + '">' + C.usd(pnl, true) + '</span></span></div>' +
+        // 원화로도: 그날 환율 (로봇이 날짜별로 적어 둔 야후 원/달러 — 보여 주기만, 증권사 환율과 몇 원 다를 수 있음)
+        (pnl && ln.fx ? '<div class="krwline"><span class="n ' + (pnl > 0 ? 'up' : 'down') + '">' + C.won(pnl, ln.fx.rate) + '</span>' +
+          '<span class="meta n">' + C.md(ln.fx.date) + ' 환율 ' + ln.fx.rate.toLocaleString('en-US', { minimumFractionDigits: 2 }) + '원</span></div>' : '') + rows.join('')
         : '<p class="empty">' + C.mdw(ln.session) + '에는 주문이 없었어요.</p>') + '</section>';
   }
 
@@ -275,7 +278,8 @@
       '<div class="cmp"><div><div class="meta">보유 수량</div><div class="n big">' + h.qty + '<span class="unit">주</span></div></div>' +
       '<div><div class="meta">달러 잔고</div><div class="n big' + (oldCash ? ' flash' : '') + '">' + (oldCash ? digits(oldCash, cash, 'h32') : esc(cash)) + '</div>' +
       (fx ? '<div class="krw n">' + C.krwApprox(h.cashCents, fx.rate) + '</div>' : '') + '</div></div>' +
-      (fx ? '<div class="fx n">환율 ' + fx.rate.toLocaleString('en-US', { minimumFractionDigits: 2 }) + '원 · ' + C.kstWhen(fx.at, now()) + ' 기준 · 보기용(계산엔 안 씀)</div>' : '') +
+      // 환율: 로봇이 세션마다 미국 장 마감 뒤 한 번 받아 둔 값 (어젯밤 실현손익 원화와 같은 값)
+      (fx ? '<div class="fx n">환율 ' + fx.rate.toLocaleString('en-US', { minimumFractionDigits: 2 }) + '원 · ' + (fx.date ? C.md(fx.date) + ' 장 마감 뒤' : C.kstWhen(fx.at, now())) + ' 기준 · 보기용(계산엔 안 씀)</div>' : '') +
       (bc ? '<div class="bcline n">BC <span style="color:#fff">' + C.money(bc.cents) + '</span>' +
         (bv ? ' · 다음 갱신 ' + C.mdw(bv.nextDate) + ' · ' + bv.interval + '일 중 ' + bv.elapsed + '일째<br>지난 BC 뒤 실현손익 <span class="' + (bv.pnlSince > 0 ? 'up' : bv.pnlSince < 0 ? 'down' : '') + '">' + C.usd(bv.pnlSince, true) + '</span>' : '') +
         '</div>' : '') + '</section>';

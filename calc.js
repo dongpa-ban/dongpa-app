@@ -88,6 +88,11 @@ var DongpaCalc = (function () {
   function usd(x, sign) { return money(Math.round(x * 100), sign); }
   function price(x) { return x === null || x === undefined ? '—' : Number(x).toFixed(2); }
   function pct(x) { return '+' + (x * 100).toFixed(2) + '%'; }
+  /** 달러 → 원 (부호 붙임): '+167,312원' · '−5,400원' */
+  function won(usdAmount, rate) {
+    var n = Math.round(usdAmount * rate), s = Math.abs(n).toLocaleString('en-US') + '원';
+    return n < 0 ? '−' + s : n > 0 ? '+' + s : s;
+  }
   /** 원화 어림값: '≈ 3,421만 원' */
   function krwApprox(cents, rate) {
     if (!(rate > 0)) return '';
@@ -153,7 +158,7 @@ var DongpaCalc = (function () {
     parts: parts, easternToUtcMs: easternToUtcMs, openMs: openMs, closeMs: closeMs,
     md: md, mdw: mdw, dowOf: dowOf, kstHm: kstHm, kstMd: kstMd, kstWhen: kstWhen, addDays: addDays, span: span,
     sessionState: sessionState,
-    money: money, usd: usd, price: price, pct: pct, krwApprox: krwApprox, rollDigits: rollDigits,
+    money: money, usd: usd, won: won, price: price, pct: pct, krwApprox: krwApprox, rollDigits: rollDigits,
     RULES: RULES, decideModeRule: decideModeRule, ZONES: ZONES, TICKS: TICKS, vis: vis, inZone: inZone, modeName: modeName
   };
 })();
