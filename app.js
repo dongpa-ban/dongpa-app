@@ -20,7 +20,7 @@
   var C = DongpaCalc;
   var Q = new URLSearchParams(location.search);
   var KEY = 'dongpa.v1.';
-  var APP_VERSION = '81f1efb-4';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
+  var APP_VERSION = '602c157-5';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
 
   /* ── 폰에 저장 (못 쓰는 폰·사생활 보호 모드에서도 화면은 그대로 뜨게) ── */
   function load(k) { try { var t = localStorage.getItem(KEY + k); return t ? JSON.parse(t) : null; } catch (e) { return null; } }
@@ -456,7 +456,7 @@
       '<div class="flabel" style="margin:12px 16px 6px">직전 모드</div>' +
       '<div class="seg"><span class="segind" id="segind"></span><button class="segb press" data-prev="safe">안전</button><button class="segb press" data-prev="aggressive">공세</button></div>' +
       '<div class="g2" aria-hidden="true"><div class="g2track">' + zones + '</div><span class="g2mid"></span><span class="g2badge n">50</span>' + ticks +
-      '<div class="gmk" id="gmrr"><span class="g2dot prev"></span></div><div class="gmk" id="gmr"><span class="g2lab n" id="g2lab"></span><span class="g2dot" id="g2dot"></span></div></div>' +
+      '<div class="gmk" id="gmrr"><span class="g2dot g2was"></span></div><div class="gmk" id="gmr"><span class="g2lab n" id="g2lab"></span><span class="g2dot" id="g2dot"></span></div></div>' +
       '<div class="g2leg"><span><i style="background:var(--aggr)"></i>공세 쪽</span><span><i style="background:var(--safe)"></i>안전 쪽</span><span><i style="background:#5c5c63"></i>그대로</span><span class="n" id="g2legv"></span></div>' +
       '<div class="simres" id="simres" role="status"><div class="resmode" id="resmode"></div><div class="reswhy n" id="reswhy"></div></div>' +
       '<div class="rules">' + rules + '</div></section>';

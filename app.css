@@ -1,5 +1,5 @@
 /* 동파앱 화면 — 10/23 확정 시안(철검) 그대로. 시안: 시험/3단계/시안/V2.dc.html */
-@font-face{font-family:"PretendardDong";src:url("font/pretendard-dong.woff2?v=81f1efb-4") format("woff2");font-weight:45 920;font-display:swap}
+@font-face{font-family:"PretendardDong";src:url("font/pretendard-dong.woff2?v=602c157-5") format("woff2");font-weight:45 920;font-display:swap}
 :root{color-scheme:dark;--bg:#000;--card:#111113;--nested:#1e1e20;--buy:#ff4a5a;--sell:#4c94ff;--buyt:#ff6b78;--sellt:#6aa8ff;--aggr:#ff9b9b;--safe:#8fb4ff;--top:env(safe-area-inset-top,0px);--bot:env(safe-area-inset-bottom,0px)}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:#000;color:#fff;overscroll-behavior:none}
@@ -199,7 +199,8 @@ button{font:inherit;color:inherit;cursor:pointer}
 .g2t::before{content:"";position:absolute;left:50%;top:-6px;width:1px;height:4px;background:#48484a}
 .g2t.edge{color:#636366}
 .g2dot{position:absolute;border-radius:50%;z-index:3;transition:border-color 220ms,box-shadow 220ms}
-.g2dot.prev{left:-6px;top:34px;width:12px;height:12px;border:2px solid rgba(255,255,255,.8);background:#000}
+/* 전 RSI 점. 이름표를 g2was로 — 'prev'는 입력 미리보기 칸(.prev, 안쪽 여백)과 겹쳐 아이폰에서 큰 까만 덩어리가 됐다(10/24) */
+.g2dot.g2was{left:-6px;top:34px;width:12px;height:12px;border:2px solid rgba(255,255,255,.8);background:#000}
 .g2dot.safe,.g2dot.aggr{left:-8px;top:32px;width:16px;height:16px;background:#fff;border:3px solid var(--safe);box-shadow:0 0 0 4px rgba(143,180,255,.28)}
 .g2dot.aggr{border-color:var(--aggr);box-shadow:0 0 0 4px rgba(255,155,155,.28)}
 .g2lab{position:absolute;left:0;top:2px;transform:translateX(-50%);font-size:11px;font-weight:800;padding:2px 8px;border-radius:7px;background:#000;white-space:nowrap;border:1.5px solid var(--safe);color:var(--safe);transition:color 220ms,border-color 220ms}
