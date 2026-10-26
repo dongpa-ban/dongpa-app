@@ -20,7 +20,10 @@
   var C = DongpaCalc;
   var Q = new URLSearchParams(location.search);
   var KEY = 'dongpa.v1.';
-  var APP_VERSION = '602c157-5';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
+  var APP_VERSION = '3a59e0c-6';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
+  // 시험 도우미(?sample·?src·?now·?moment·?tab)는 저장소 판에서만. 배포된 앱에서는 무시한다 — 누가 ?src=로 가짜 주문표를 띄우는 링크를 못 만들게 (10/26 검토 AI)
+  var DEV = APP_VERSION === 'dev';
+  function testQ(k) { return DEV ? Q.get(k) : null; }
 
   /* ── 폰에 저장 (못 쓰는 폰·사생활 보호 모드에서도 화면은 그대로 뜨게) ── */
   function load(k) { try { var t = localStorage.getItem(KEY + k); return t ? JSON.parse(t) : null; } catch (e) { return null; } }
@@ -36,8 +39,8 @@
   var S = {
     screen: null,   // 지금 보여 주는 화면 파일
     before: null,   // 비교할 지난 화면 (같은 세션일 때만 숫자를 굴린다)
-    nowFix: Q.get('now') ? Number(Q.get('now')) : null,
-    tab: Q.get('tab') || 'home', dir: 'f', menu: false,
+    nowFix: testQ('now') ? Number(testQ('now')) : null,
+    tab: testQ('tab') || 'home', dir: 'f', menu: false,
     sim: null, moment: null, fresh: true, checked: {}
   };
   function now() { return S.nowFix || Date.now(); }
@@ -527,7 +530,7 @@
   }
   /** 이번에 띄울 드문 순간: 처음 보는 폰이면 기억만 하고 띄우지 않는다 */
   function pickMoment(sc) {
-    var forced = Q.get('moment');
+    var forced = testQ('moment');
     if (forced) return forced;
     var v = sc.view || {};
     var out = null;
@@ -1139,11 +1142,11 @@
         : t.status === 'behind' ? '기록 ' + t.lostCount + '개가 사라졌어요. 장부를 예전 상태로 되돌린 모양이에요.'
         : '기록 ' + t.lostCount + '개가 사라지고 새 기록 ' + t.addedCount + '개가 생겼어요. 예전 상태로 되돌린 뒤 새로 쓴 모양이에요.';
       h = '<p class="dtext"><b>' + C.kstWhen(t.at, now()) + '</b>에 알아챘어요. ' + how + '</p>';
-      if (t.lost.length) h += '<div class="tlabel">사라진 기록</div><ul class="tl">' + t.lost.map(item).join('') + (t.lostCount > t.lost.length ? '<li class="meta">그 밖에 ' + (t.lostCount - t.lost.length) + '개</li>' : '') + '</ul>';
-      if (t.added.length) h += '<div class="tlabel">새 기록 <span class="meta">(이름은 깃허브에 적힌 그대로라 참고만)</span></div><ul class="tl">' + t.added.map(item).join('') + (t.addedCount > t.added.length ? '<li class="meta">그 밖에 ' + (t.addedCount - t.added.length) + '개</li>' : '') + '</ul>';
+      if (t.lost.length) h += '<div class="tlabel">사라진 기록</div><ul class="tlist">' + t.lost.map(item).join('') + (t.lostCount > t.lost.length ? '<li class="meta">그 밖에 ' + (t.lostCount - t.lost.length) + '개</li>' : '') + '</ul>';
+      if (t.added.length) h += '<div class="tlabel">새 기록 <span class="meta">(이름은 깃허브에 적힌 그대로라 참고만)</span></div><ul class="tlist">' + t.added.map(item).join('') + (t.addedCount > t.added.length ? '<li class="meta">그 밖에 ' + (t.addedCount - t.added.length) + '개</li>' : '') + '</ul>';
       h += '<div class="tlabel">그래서 장부가 이렇게 달라졌어요</div>' + (t.unreadable ? '<p class="dtext">옛 기록을 못 읽어 장부를 비교할 수 없어요.</p>'
         : t.changes.map(function (c) {
-          return '<div class="tw"><div class="twho">' + esc(c.who) + '</div><ul class="tl">' + c.lines.map(function (x) { return '<li' + (/^주의/.test(x) ? ' class="warnt"' : '') + '>' + esc(x) + '</li>'; }).join('') + '</ul></div>';
+          return '<div class="tw"><div class="twho">' + esc(c.who) + '</div><ul class="tlist">' + c.lines.map(function (x) { return '<li' + (/^주의/.test(x) ? ' class="warnt"' : '') + '>' + esc(x) + '</li>'; }).join('') + '</ul></div>';
         }).join(''));
     }
     return '<section class="card danger"><h2 class="ct">로봇이 멈췄어요 · 장부 기록이 바뀌었어요</h2>' + h +
@@ -1311,7 +1314,7 @@
       S.fid = fid;
       return fetch('s/' + fid + '.json', { cache: 'no-cache' });
     }).then(function (r) {
-      if (r.status === 404) throw new Error('화면 파일이 없어요. 링크가 바뀌었으면 관리자에게 새 링크를 받아 주세요');
+      if (r.status === 404) { var g = new Error('화면 파일이 없어요. 링크가 바뀌었으면 관리자에게 새 링크를 받아 주세요'); g.gone = true; throw g; }
       if (!r.ok) throw new Error('받기 실패 ' + r.status);
       return r.json();
     }).then(function (j) {
@@ -1328,14 +1331,14 @@
   }
 
   function source() {
-    var sample = Q.get('sample');
+    var sample = testQ('sample');
     if (sample) {
       return fetchJson('시험/견본/' + encodeURIComponent(sample) + '.json').then(function (j) {
         if (!S.nowFix && j.now) S.nowFix = j.now;
         return { screen: j.screen, before: j.before || null };
       });
     }
-    var src = Q.get('src');
+    var src = testQ('src');
     if (src) return fetchJson(src).then(function (j) { return { screen: j, before: null }; });
     var k = viewKey();
     return k ? lockedSource(k) : Promise.resolve(null);
@@ -1397,7 +1400,9 @@
     root.addEventListener('click', onClick);
     // 새 링크(# 뒤 열쇠)로 바꿔 열면 처음부터 다시 (같은 페이지라 저절로는 안 다시 읽는다)
     window.addEventListener('hashchange', function () { location.reload(); });
-    var cached = Q.get('sample') ? null : load('screen');
+    // 새 링크(#k=)면 지난 링크의 화면·폰 등록을 먼저 버린다 — 옛 사람의 주문표가 잠깐이라도 보이지 않게 (10/26 검토 AI)
+    if (!testQ('sample') && !testQ('src')) viewKey();
+    var cached = testQ('sample') ? null : load('screen');
     if (cached) show(cached, null);
     source().then(function (got) {
       if (!got) { if (!cached) bootMsg('보기 링크로 열어 주세요.'); return; }
@@ -1410,15 +1415,16 @@
       }
       // 지난번에 본 화면과 비교해 바뀐 숫자만 굴린다
       var before = got.before || cached;
-      if (!Q.get('sample')) save('screen', sc);
+      if (!testQ('sample')) save('screen', sc);
       show(sc, before);
     }).catch(function (e) {
-      if (e && e.locked) {
+      if (e && (e.locked || e.gone)) {
         // 위조 확인 실패: 저장된 화면도 내리고 주문표를 안 보인다 (설계서 「안전장치」)
+        // 화면 파일이 없음(링크가 바뀜)도 같다: 저장된 옛 화면으로 주문하지 않게
         save('screen', null);
         S.screen = null;
         root.innerHTML = '<div class="boot" id="boot">' + MARK + '<div class="lname">동파앱</div>' +
-          '<div class="bmsg" id="bmsg" style="color:#ffb35c">' + esc(e.message) + '. 이 화면으로 주문하지 마세요. 관리자에게 알려 주세요.</div></div>';
+          '<div class="bmsg" id="bmsg" style="color:#ffb35c">' + esc(e.message) + (e.gone ? '' : '. 이 화면으로 주문하지 마세요. 관리자에게 알려 주세요.') + '</div></div>';
         return;
       }
       if (!cached) bootMsg('화면을 못 받았어요. 잠시 뒤 다시 열어 주세요. (' + e.message + ')');
