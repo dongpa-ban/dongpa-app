@@ -23,7 +23,7 @@
   if (window.navigator.standalone === true) document.documentElement.classList.add('iosapp');
   var Q = new URLSearchParams(location.search);
   var KEY = 'dongpa.v1.';
-  var APP_VERSION = 'c93aa17-8';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
+  var APP_VERSION = 'ae73589-9';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
   // 시험 도우미(?sample·?src·?now·?moment·?tab·?every)는 저장소 판에서만. 배포된 앱에서는 무시한다 — 누가 ?src=로 가짜 주문표를 띄우는 링크를 못 만들게 (10/26 검토 AI)
   var DEV = APP_VERSION === 'dev';
   function testQ(k) { return DEV ? Q.get(k) : null; }
