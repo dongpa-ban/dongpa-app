@@ -1,5 +1,5 @@
 /* 동파앱 화면 — 10/23 확정 시안(철검) 그대로. 시안: 시험/3단계/시안/V2.dc.html */
-@font-face{font-family:"PretendardDong";src:url("font/pretendard-dong.woff2?v=b3b99e7-11") format("woff2");font-weight:45 920;font-display:swap}
+@font-face{font-family:"PretendardDong";src:url("font/pretendard-dong.woff2?v=7771f94-12") format("woff2");font-weight:45 920;font-display:swap}
 :root{color-scheme:dark;--bg:#000;--card:#111113;--nested:#1e1e20;--buy:#ff4a5a;--sell:#4c94ff;--buyt:#ff6b78;--sellt:#6aa8ff;--aggr:#ff9b9b;--safe:#8fb4ff;--top:env(safe-area-inset-top,0px);--bot:env(safe-area-inset-bottom,0px)}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:#000;color:#fff;overscroll-behavior:none}

@@ -23,7 +23,7 @@
   if (window.navigator.standalone === true) document.documentElement.classList.add('iosapp');
   var Q = new URLSearchParams(location.search);
   var KEY = 'dongpa.v1.';
-  var APP_VERSION = 'b3b99e7-11';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
+  var APP_VERSION = '7771f94-12';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
   // 시험 도우미(?sample·?src·?now·?moment·?tab·?every)는 저장소 판에서만. 배포된 앱에서는 무시한다 — 누가 ?src=로 가짜 주문표를 띄우는 링크를 못 만들게 (10/26 검토 AI)
   var DEV = APP_VERSION === 'dev';
   function testQ(k) { return DEV ? Q.get(k) : null; }
@@ -545,13 +545,13 @@
     return head + sum + '<section class="card"><div class="ch"><h2 class="ct">Lot</h2><span class="meta">누르면 고치기</span></div><div class="lots">' + cards + '</div></section>' +
       '<p class="robot">손익은 마지막 종가로 본 값이에요. 실제로 판 손익은 ‘수익’ 탭에 있어요. 증권사와 다르면 그 Lot을 눌러 고쳐요.</p></div></div>';
   }
-  /** Lot을 누르면 나오는 고치기 창의 고를 것 — 앱에서 산 Lot(L-날짜)은 그날 BUY, 앱 밖에서 산 Lot(L-E-…)은 그 입력 */
+  /** Lot을 누르면 나오는 고치기 창의 고를 것 — 앱에서 산 Lot(L-날짜)은 그날 BUY, 수동 매수 입력으로 산 Lot(L-E-…)은 그 입력 */
   function lotFixes(lotId) {
-    var m = /^L-(\d{8})$/.exec(lotId), out = [['sold', '증권사에서 직접 팔았어요', '판 날짜·가격·수량만 넣으면 돼요 (앱 밖 매도)']];
+    var m = /^L-(\d{8})$/.exec(lotId), out = [['sold', '증권사에서 직접 팔았어요', '판 날짜·가격·수량만 넣으면 돼요 (수동 매도 입력)']];
     if (m) {
       out.push(['notbought', '사실 안 샀어요', C.md(m[1].slice(0, 4) + '-' + m[1].slice(4, 6) + '-' + m[1].slice(6)) + ' BUY를 ‘안 냄’으로 — 이 Lot이 빠져요']);
       out.push(['differs', '산 값·수량이 달랐어요', '그날 BUY를 실제 체결 값으로 (체결이 달랐음)']);
-    } else if (/^L-E-/.test(lotId)) out.push(['notbought', '사실 안 샀어요', '그때 넣은 ‘앱 밖 매수’를 취소해요']);
+    } else if (/^L-E-/.test(lotId)) out.push(['notbought', '사실 안 샀어요', '그때 넣은 ‘수동 매수 입력’을 취소해요']);
     return out;
   }
   function lotPreset(lotId, k) {
@@ -885,8 +885,8 @@
     ['bc_now', 'BC 지금 갱신', '10거래일 전에 일찍'],
     ['not_placed', '주문 안 냄', '깜빡했거나 증권사가 거절'],
     ['fill_differs', '체결이 달랐음', '체결가·수량이 다를 때'],
-    ['manual_buy', '앱 밖 매수', '직접 샀을 때'],
-    ['manual_sell', '앱 밖 매도', '직접 팔았을 때'],
+    ['manual_buy', '수동 매수 입력', '직접 샀을 때 (깜빡해서 지정가로 산 것 등)'],
+    ['manual_sell', '수동 매도 입력', '직접 팔았을 때'],
     ['cancel_event', '예외 취소', '잘못 넣은 입력 되돌리기']
   ];
   // ⑥d 시장 전체 (관리자 자기 장부에서만 — 창구가 관리자 장부 목록에만 market을 붙인다)
@@ -951,7 +951,7 @@
       : P.type === 'cancel_event' ? L.events.some(function (e) { return e.id === pick; })
       : L.orders.some(function (o) { return o.id === pick && (P.type === 'not_placed' || o.result); });
     if (has) F.fields.pick = pick;
-    else F.miss = (P.type === 'cancel_event' ? '그 앱 밖 매수 입력(' + pick + ')' : P.type === 'manual_sell' ? '그 Lot(' + pick + ')' : pick + ' 주문') +
+    else F.miss = (P.type === 'cancel_event' ? '그 수동 매수 입력(' + pick + ')' : P.type === 'manual_sell' ? '그 Lot(' + pick + ')' : pick + ' 주문') +
       '을 목록에서 찾지 못했어요. 장부를 옮기기 전에 산 Lot일 수 있어요. 아래에서 고르거나 관리자에게 물어 주세요.';
     if (has && P.type === 'fill_differs') {
       var o = L.orders.filter(function (x) { return x.id === pick; })[0];
@@ -1362,12 +1362,18 @@
   function helpFix() {
     var T = function (t) { return '<p class="htext">' + t + '</p>'; };
     return '<p class="hsecsub">고치는 곳은 모두 ' + PATH('⋯ 메뉴') + ' → ' + PATH('장부 수정') + '이에요. 저장 전에 무엇이 바뀌는지 먼저 보여 줘요.</p>' +
-      hcard('!', '주문 넣는 걸 깜빡했어요', steps(['다음 날 아침, 증권사에 <b>체결이 없는지</b> 확인해요.', PATH('장부 수정') + ' → ' + PATH('주문 안 냄') + '.',
-        '못 넣은 주문을 골라요. <b>일부만</b> 못 넣었으면 그것만 골라요.', '미리보기를 보고 <b>저장</b>.']) +
+      // 10/26 형님: 동파법은 BUY를 깜빡했으면 알아챈 그날 아침에라도 지정가로 산다 → 그때 적는 법
+      hcard('!', '주문 넣는 걸 깜빡했어요',
+        '<div class="when2"><span class="wt">참고 · 동파법 규칙</span><span class="wd">BUY를 깜빡했으면 알아챈 <b>그날 아침에라도 지정가로</b> 사요.</span></div>' +
+        T('<b>지정가로 샀으면</b> 이렇게 적어요.') +
+        steps(['어젯밤 결과에 그 BUY가 <b>‘체결’</b>로 나와 있으면 ' + PATH('장부 수정') + ' → ' + PATH('주문 안 냄') + ' → 그 BUY. 앱이 산 것으로 적어 둔 것을 지워요. ‘미체결’이면 건너뛰어요.',
+          PATH('장부 수정') + ' → ' + PATH('수동 매수 입력') + ' → 산 날(증권사 체결 내역의 날짜) · 실제 체결가 · 수량 · 모드(깜빡한 주문의 모드).',
+          '미리보기를 보고 <b>저장</b>.']) +
+        T('<b>안 샀으면</b> ' + PATH('주문 안 냄') + '만 넣어요. SELL도 같아요. <b>일부만</b> 못 넣었으면 그 주문만 골라요.') +
         '<p class="hsmall">안 고치면 앱은 종가대로 ‘체결’로 적어서, 증권사와 숫자가 달라져요.</p>', true) +
       hcard('!', '가격이나 수량을 잘못 넣었어요', T('<b>장 시작 전에 알았으면</b> — 증권사에서 주문을 고치거나 취소하면 끝이에요. 앱은 그대로 둬요.') +
         T('<b>체결된 뒤에 알았으면</b> — 아침에 증권사 체결 내역을 보고 ' + PATH('체결이 달랐음') + ' → 그 주문 → 실제 가격·수량. 아예 안 됐으면 수량 0.'), true) +
-      hcard('!', '앱에 없는 주문을 넣었어요', T('두 번 넣었거나 직접 사고팔았으면 ' + PATH('앱 밖 매수') + ' 또는 ' + PATH('앱 밖 매도') + ' → 날짜·가격·수량.') +
+      hcard('!', '앱에 없는 주문을 넣었어요', T('두 번 넣었거나 직접 사고팔았으면 ' + PATH('수동 매수 입력') + ' 또는 ' + PATH('수동 매도 입력') + ' → 날짜·가격·수량.') +
         T('<b>보유 Lot</b> 탭에서 그 Lot을 눌러도 같은 창이 열려요.'), true) +
       hcard('!', '증권사 숫자와 달라요', steps(['먼저 위의 세 경우인지 확인해요.', '<b>달러 잔고만</b> 다르면 ' + PATH('현금 = $X') + '에 증권사 달러 잔고를 넣어요.',
         '<b>보유 수량</b>이 다르고 이유를 모르겠으면 관리자에게 물어요.']), true) +
