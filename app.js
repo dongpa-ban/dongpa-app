@@ -23,7 +23,7 @@
   if (window.navigator.standalone === true) document.documentElement.classList.add('iosapp');
   var Q = new URLSearchParams(location.search);
   var KEY = 'dongpa.v1.';
-  var APP_VERSION = 'e6c27cf-10';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
+  var APP_VERSION = 'b3b99e7-11';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
   // 시험 도우미(?sample·?src·?now·?moment·?tab·?every)는 저장소 판에서만. 배포된 앱에서는 무시한다 — 누가 ?src=로 가짜 주문표를 띄우는 링크를 못 만들게 (10/26 검토 AI)
   var DEV = APP_VERSION === 'dev';
   function testQ(k) { return DEV ? Q.get(k) : null; }
@@ -808,7 +808,7 @@
     else if (act === 'accept-check') { S.sheet.ok = !S.sheet.ok; renderOverlays(); }
     else if (act === 'accept-go') acceptGo(t);
     else if (act === 'push-on') enablePush(t);
-    else if (act === 'push-test') windowCall({ a: 'push_test', phone: load('phoneKey') }).then(function (r) { toast(r.ok ? '시험 알림을 보냈어요' : '보내지 못했어요'); }).catch(function () { toast('창구에 닿지 못했어요'); });
+    else if (act === 'push-test') pushTest().then(function (r) { toast(r.ok ? '시험 알림을 보냈어요' : '보내지 못했어요'); }).catch(function () { toast('창구에 닿지 못했어요'); });
   }
 
   /* ── ③ 폰 등록 (PIN) — 창구: 로봇/RobotWindow.gs ─────────────── */
@@ -1213,6 +1213,12 @@
     }).catch(function (e) { btn.disabled = false; btn.textContent = '증권사에 넣었어요'; toast(e.message || '창구에 닿지 못했어요'); });
   }
   /** 21시 알림 켜기: 알림 허용 → 알림 받는 일꾼(sw.js) → 창구 도장 열쇠로 알림 주소 만들기 → 창구에 저장 → 시험 알림 */
+  /** 시험 알림: 2분 안에 오는 알림은 시험이라고 sw.js에 알려 두고 보낸다 (알림에 내용이 없어서 — 10/26 미니 폰에서 진짜 21시 알림처럼 보였음) */
+  function pushTest() {
+    var mark = Promise.resolve();
+    try { mark = caches.open('dongpa-flags').then(function (c) { return c.put('test-push', new Response(String(Date.now() + 120000))); }).catch(function () {}); } catch (e) { /* 저장소를 못 쓰면 진짜 알림 문구로 */ }
+    return mark.then(function () { return windowCall({ a: 'push_test', phone: load('phoneKey') }); });
+  }
   function enablePush(btn) {
     if (needPhone()) return;
     btn.disabled = true; btn.textContent = '켜는 중…';
@@ -1230,7 +1236,7 @@
         if (!r.ok) throw new Error(why(r.why));
         save('pushOn', true);
         redrawHome();
-        return windowCall({ a: 'push_test', phone: load('phoneKey') });
+        return pushTest();
       }).then(function () { toast('켰어요. 시험 알림이 곧 와요'); })
       .catch(function (e) { btn.disabled = false; btn.textContent = '21시 알림 켜기'; toast(e.message || '켜지 못했어요'); });
   }
