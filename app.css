@@ -1,5 +1,5 @@
 /* 동파앱 화면 — 10/23 확정 시안(철검) 그대로. 시안: 시험/3단계/시안/V2.dc.html */
-@font-face{font-family:"PretendardDong";src:url("font/pretendard-dong.woff2?v=ae73589-9") format("woff2");font-weight:45 920;font-display:swap}
+@font-face{font-family:"PretendardDong";src:url("font/pretendard-dong.woff2?v=e6c27cf-10") format("woff2");font-weight:45 920;font-display:swap}
 :root{color-scheme:dark;--bg:#000;--card:#111113;--nested:#1e1e20;--buy:#ff4a5a;--sell:#4c94ff;--buyt:#ff6b78;--sellt:#6aa8ff;--aggr:#ff9b9b;--safe:#8fb4ff;--top:env(safe-area-inset-top,0px);--bot:env(safe-area-inset-bottom,0px)}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:#000;color:#fff;overscroll-behavior:none}
@@ -375,3 +375,71 @@ button{font:inherit;color:inherit;cursor:pointer}
 /* 어젯밤 실현손익 원화 (그날 환율) */
 .krwline{display:flex;justify-content:flex-end;align-items:baseline;gap:8px;padding:0 16px 8px;font-size:13px;font-weight:700;flex-wrap:wrap}
 .krwline .meta{font-weight:500}
+/* ── 보유 Lot · 수익 · 도움말 탭 (10/26 시안 확정: 시험/3단계/시안/탭/) ── */
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:4px 16px 0}
+.kl{font-size:12px;color:#8e8e93;font-weight:600}
+.kv{font-size:20px;line-height:26px;font-weight:800;letter-spacing:-0.02em;white-space:nowrap}
+.ks{font-size:12px;color:#a1a1a6;white-space:nowrap}
+.kv.up,.ks.up{color:var(--buyt)}
+.kv.down,.ks.down{color:var(--sellt)}
+.note{margin:0;font-size:12px;color:#8e8e93;padding:8px 16px 0;line-height:17px}
+.lots{display:flex;flex-direction:column;gap:8px;padding:0 12px}
+.lot{border-radius:18px;padding:12px 14px;background:var(--nested);display:flex;flex-direction:column;gap:6px;border:0;width:100%;text-align:left;color:#fff}
+.lot.moc{box-shadow:inset 0 0 0 1px rgba(76,148,255,.55);background:#0b1b34}
+.lhead{display:flex;align-items:center;gap:8px}
+.lot .lname{font-size:15px;font-weight:800}
+.lpl{margin-left:auto;font-size:15px;font-weight:800;white-space:nowrap}
+.chev{color:#8e8e93;font-size:20px;line-height:20px;margin-left:2px}
+.lpl + .chev{margin-left:2px}
+.lhead .mt + .chev{margin-left:auto}
+.lgrid{display:flex;justify-content:space-between;font-size:13px;color:#c7c7cc;gap:8px}
+.lsell{display:flex;align-items:center;gap:6px;font-size:13px;color:#c7c7cc}
+.lsell .sp{margin:0;color:var(--sell);font-weight:800;font-size:15px;line-height:20px}
+.lsell .tkd{margin-left:auto}
+.dbar{position:relative;height:6px;border-radius:3px;background:#2c2c2e;overflow:hidden}
+.dbar i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:#8e8e93}
+.dbar.aggressive i{background:var(--aggr)}
+.dbar.safe i{background:var(--safe)}
+.dbar.now i{background:var(--sell)}
+.dl{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:#8e8e93}
+.mt{font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;white-space:nowrap}
+.mt.aggressive{color:var(--aggr);background:rgba(255,155,155,.14)}
+.mt.safe{color:var(--safe);background:rgba(143,180,255,.14)}
+.row2{display:flex;align-items:center;gap:10px;padding:10px 16px;border-top:.5px solid #232325}
+.ch + .row2{border-top:0}
+.bup{fill:var(--buy)}
+.bdn{fill:var(--sell)}
+.tlz{fill:#8e8e93}
+.helpw{gap:14px}
+.helpw .seg{margin:0}
+.hcard{border-radius:22px;background:var(--card);padding:18px 16px;display:flex;flex-direction:column;gap:12px}
+.hhead{display:flex;align-items:center;gap:10px}
+.hnum{width:32px;height:32px;border-radius:16px;background:#2c2c2e;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;flex:none}
+.hnum.warn{background:rgba(255,212,59,.18);color:#ffd43b}
+.htitle{margin:0;font-size:19px;line-height:26px;font-weight:800}
+.htext{margin:0;font-size:16px;line-height:25px;color:#e5e5ea}
+.htext b{color:#fff;font-weight:800}
+.htext b.tyel{color:#ffd43b}
+.htext b.torg{color:#ff922b}
+.hsmall{margin:0;font-size:14px;line-height:21px;color:#a1a1a6}
+.hsecsub{margin:0 4px;font-size:15px;line-height:23px;color:#c7c7cc}
+.steps{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px}
+.steps li{display:flex;gap:10px;font-size:16px;line-height:24px;color:#e5e5ea}
+.steps li b{color:#fff}
+.sn{flex:none;width:24px;height:24px;border-radius:12px;background:#3a3a3c;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.when2{display:flex;flex-direction:column;gap:2px;border-radius:14px;background:var(--nested);padding:12px 14px}
+.when2 .wt{font-size:13px;font-weight:700;color:#a1a1a6}
+.when2 .wd{font-size:16px;line-height:24px}
+.exo{border-radius:14px;padding:10px 12px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.exo.buy{background:#2a0c11;box-shadow:inset 0 0 0 1px rgba(255,74,90,.42)}
+.exo.sell{background:#0b1b34;box-shadow:inset 0 0 0 1px rgba(76,148,255,.42)}
+.eside{font-weight:800;font-size:14px}
+.exo.buy .eside,.exo.buy .ep{color:var(--buy)}
+.exo.sell .eside,.exo.sell .ep{color:var(--sell)}
+.ep{font-size:22px;font-weight:800}
+.eq{font-size:16px;font-weight:700}
+.et{font-size:12px;font-weight:700;padding:1px 7px;border-radius:999px;background:rgba(255,255,255,.1);color:#e5e5ea}
+.arrow{font-size:14px;line-height:20px;color:#a1a1a6;margin:-6px 0 0 4px}
+.path{display:inline-block;font-size:14px;line-height:20px;font-weight:700;color:#fff;background:#2c2c2e;border-radius:8px;padding:1px 8px;margin:0 2px}
+.kpis.ret{grid-template-columns:minmax(0,.85fr) minmax(0,.85fr) minmax(0,1.3fr)}
+.kpis.ret .kv{font-size:19px}

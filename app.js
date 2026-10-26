@@ -3,7 +3,7 @@
  * ------------------------------------------------------------------
  * 로봇이 만든 화면 파일(screen.json)을 그대로 보여 준다. 계산은 로봇이 다 했고, 여기서는 모양만 만든다.
  *   홈: 오늘 밤 주문 → 어젯밤 결과 → 증권사 앱과 비교     모드: 지금 모드 · QQQ 주간 RSI · 시뮬레이터
- *   보유 Lot · 수익: 자리만 (동파웹앱 탭을 어떻게 옮길지는 나중에 정함)
+ *   보유 Lot: 합계 · Lot 카드(누르면 고치기)     수익: 이번 달·올해·누적 · 월별 막대 · 판 기록     도움말: ⋯ 메뉴 (10/26 시안 확정)
  *
  * 화면 파일 받는 곳:
  *   #k=<보기 열쇠>    보통. 로봇이 열쇠로 잠가 올린 s/<파일 이름>.json을 받아 브라우저 암호 기능(WebCrypto AES-GCM)으로 푼다
@@ -23,7 +23,7 @@
   if (window.navigator.standalone === true) document.documentElement.classList.add('iosapp');
   var Q = new URLSearchParams(location.search);
   var KEY = 'dongpa.v1.';
-  var APP_VERSION = 'ae73589-9';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
+  var APP_VERSION = 'e6c27cf-10';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
   // 시험 도우미(?sample·?src·?now·?moment·?tab·?every)는 저장소 판에서만. 배포된 앱에서는 무시한다 — 누가 ?src=로 가짜 주문표를 띄우는 링크를 못 만들게 (10/26 검토 AI)
   var DEV = APP_VERSION === 'dev';
   function testQ(k) { return DEV ? Q.get(k) : null; }
@@ -502,10 +502,104 @@
     document.querySelectorAll('.rule').forEach(function (k) { k.classList.toggle('on', +k.getAttribute('data-rule') === dec.rule); });
   }
 
-  /* ── 자리만 있는 탭 ───────────────────────────────────── */
-  function laterHtml(title) {
-    return '<div class="hd"><div class="brand">' + MARK + '<span>동파앱</span></div></div><div class="scroll"><div class="wrap"><div class="titlerow"><h1 class="h1">' + title + '</h1></div>' +
-      '<section class="card"><p class="later">동파웹앱의 ‘' + title + '’ 탭 자리예요. 무엇을 어떻게 보여 줄지는 나중에 정해요.</p></section></div></div>';
+  /* ── 보유 Lot (10/26 형님: 시안 가+다 — 카드 목록, 누르면 고치기) ── */
+  function tabHead(sc) { return '<div class="hd"><div class="brand">' + MARK + '<span>동파앱</span></div><div class="hdr">' + freshHtml(sc) + '</div></div>'; }
+  function sellOf(sc, lotId) {
+    var os = sc.next && sc.next.orders || [];
+    for (var i = 0; i < os.length; i++) if (os[i].side === 'SELL' && os[i].lotId === lotId) return os[i];
+    return null;
+  }
+  function plClass(x) { return x > 0 ? 'up' : x < 0 ? 'down' : ''; }
+  function lotsHtml(sc) {
+    var lots = (sc.lots || []).slice().sort(function (a, b) { return a.buyDate < b.buyDate ? -1 : a.buyDate > b.buyDate ? 1 : String(a.lotId).localeCompare(String(b.lotId)); });
+    var close = lastClose(sc), params = sc.view && sc.view.params || {};
+    var head = tabHead(sc) + '<div class="scroll"><div class="wrap"><div class="titlerow"><h1 class="h1">보유 Lot</h1>' + (lots.length ? '<span class="pill n">' + lots.length + '개</span>' : '') + '</div>';
+    if (!lots.length) return head + '<section class="card"><p class="later">보유 Lot이 없어요.</p></section></div></div>';
+    var qty = 0, cost = 0, val = 0;
+    lots.forEach(function (l) { qty += l.qty; cost += l.entry * l.qty; if (close) val += close * l.qty; });
+    var pnl = close ? val - cost : null;
+    var sells = lots.map(function (l) { return sellOf(sc, l.lotId); }).filter(Boolean), moc = sells.filter(function (o) { return o.type === 'MOC'; }).length;
+    var sum = '<section class="card"><div class="ch"><h2 class="ct">합계</h2>' + (close ? '<span class="meta n">' + (sc.lastNight ? C.md(sc.lastNight.session) + ' ' : '') + '종가 $' + C.price(close) + ' 기준</span>' : '') + '</div>' +
+      '<div class="kpis"><div><div class="kl">보유</div><div class="kv n">' + qty + '<span class="unit">주</span></div></div>' +
+      '<div><div class="kl">평균 매수가</div><div class="kv n">$' + C.price(cost / qty) + '</div></div>' +
+      '<div><div class="kl">평가손익</div>' + (pnl === null ? '<div class="kv">—</div>' : '<div class="kv n ' + plClass(pnl) + '">' + C.usd(pnl, true) + '</div><div class="ks n ' + plClass(pnl) + '">' + C.spct(pnl / cost) + '</div>') + '</div></div>' +
+      (sc.next && sells.length ? '<div class="bcline">' + C.mdw(sc.next.session) + ' 밤 SELL ' + sells.length + '건' + (moc ? ' · <b>MOC ' + moc + '건</b>(무조건 팔림)' : '') + (sells.length - moc ? ' · LOC ' + (sells.length - moc) + '건(종가가 매도가 이상이면 팔림)' : '') + '</div>' : '') + '</section>';
+    var cards = lots.map(function (l) {
+      var md = l.mode === 'aggressive' ? 'aggressive' : 'safe';   // 클래스 이름에 그대로 넣지 않게 (엔진 normalizeLotMode처럼 둘 중 하나)
+      var o = sellOf(sc, l.lotId), p = params[md] || {}, lp = close ? (close - l.entry) * l.qty : null;
+      var isMoc = o && o.type === 'MOC';
+      var sell = o ? '<div class="lsell"><span>' + (sc.next ? C.mdw(sc.next.session) + ' 밤' : '오늘 밤') + '</span><span class="sp n">' + (isMoc ? 'MOC' : 'LOC $' + C.price(o.price)) + ' × ' + o.qty + '주</span>' +
+        (o.dday !== null && o.dday !== undefined ? '<span class="tkd n">D-' + o.dday + '</span>' : '') + '</div>' : '<div class="lsell"><span>' + (sc.next ? C.mdw(sc.next.session) + ' 밤 SELL 없음' : '오늘 밤 주문을 아직 몰라요 (홈을 봐 주세요)') + '</span></div>';
+      var bar = '';
+      if (o && p.hold && o.dday !== null && o.dday !== undefined) {
+        var held = Math.max(0, p.hold - o.dday);
+        bar = '<div class="dbar ' + (isMoc ? 'now' : md) + '"><i style="width:' + Math.min(100, Math.round(held / p.hold * 100)) + '%"></i></div>' +
+          '<div class="dl n"><span>' + p.hold + '거래일 중 ' + held + '일 지남</span><span>' + (isMoc ? '오늘 밤 무조건 팔림' : l.mocDate ? '안 팔리면 ' + C.mdw(l.mocDate) + ' MOC' : '') + '</span></div>';
+      }
+      return '<button class="lot press' + (isMoc ? ' moc' : '') + '" data-act="lot" data-lot="' + esc(l.lotId) + '" aria-label="' + esc(l.lotId) + ' 고치기">' +
+        '<div class="lhead"><span class="lname n">' + esc(l.lotId) + '</span><span class="mt ' + md + '">' + C.modeName(md) + '</span>' +
+        (lp === null ? '' : '<span class="lpl n ' + plClass(lp) + '">' + C.usd(lp, true) + '</span>') + '<span class="chev" aria-hidden="true">›</span></div>' +
+        '<div class="lgrid n"><span>' + C.md(l.buyDate) + ' · $' + C.price(l.entry) + ' × ' + l.qty + '주</span>' + (lp === null ? '' : '<span class="' + plClass(lp) + '">' + C.spct((close - l.entry) / l.entry) + '</span>') + '</div>' +
+        sell + bar + '</button>';
+    }).join('');
+    return head + sum + '<section class="card"><div class="ch"><h2 class="ct">Lot</h2><span class="meta">누르면 고치기</span></div><div class="lots">' + cards + '</div></section>' +
+      '<p class="robot">손익은 마지막 종가로 본 값이에요. 실제로 판 손익은 ‘수익’ 탭에 있어요. 증권사와 다르면 그 Lot을 눌러 고쳐요.</p></div></div>';
+  }
+  /** Lot을 누르면 나오는 고치기 창의 고를 것 — 앱에서 산 Lot(L-날짜)은 그날 BUY, 앱 밖에서 산 Lot(L-E-…)은 그 입력 */
+  function lotFixes(lotId) {
+    var m = /^L-(\d{8})$/.exec(lotId), out = [['sold', '증권사에서 직접 팔았어요', '판 날짜·가격·수량만 넣으면 돼요 (앱 밖 매도)']];
+    if (m) {
+      out.push(['notbought', '사실 안 샀어요', C.md(m[1].slice(0, 4) + '-' + m[1].slice(4, 6) + '-' + m[1].slice(6)) + ' BUY를 ‘안 냄’으로 — 이 Lot이 빠져요']);
+      out.push(['differs', '산 값·수량이 달랐어요', '그날 BUY를 실제 체결 값으로 (체결이 달랐음)']);
+    } else if (/^L-E-/.test(lotId)) out.push(['notbought', '사실 안 샀어요', '그때 넣은 ‘앱 밖 매수’를 취소해요']);
+    return out;
+  }
+  function lotPreset(lotId, k) {
+    var m = /^L-(\d{8})$/.exec(lotId);
+    if (k === 'sold') return { type: 'manual_sell', fields: { pick: lotId } };
+    if (k === 'notbought') return m ? { type: 'not_placed', fields: { pick: 'B-' + m[1] } } : { type: 'cancel_event', fields: { pick: lotId.slice(2) } };
+    return { type: 'fill_differs', fields: { pick: 'B-' + m[1] } };
+  }
+
+  /* ── 수익 (10/26 형님: 시안 가 + 누적 원화 + '내 돈' 기준 %) ── */
+  function returnsHtml(sc) {
+    var head = tabHead(sc) + '<div class="scroll"><div class="wrap"><div class="titlerow"><h1 class="h1">수익</h1>';
+    if (!sc.sells || !sc.flows) return head + '</div><section class="card"><p class="later">수익 기록이 아직 없어요. 로봇이 다음에 돌면 보여요.</p></section></div></div>';
+    var today = C.parts(now(), 'America/New_York').date, r = C.returnsOf(sc.sells, sc.flows, today), fx = sc.fx;
+    var kpi = function (label, p, big) {
+      return '<div><div class="kl">' + label + '</div>' + (big ? '<div class="kv n ' + plClass(p.pnlCents) + '">' + C.money(p.pnlCents, true) + '</div>' + (fx ? '<div class="ks n ' + plClass(p.pnlCents) + '">' + C.won(p.pnlCents / 100, fx.rate) + '</div>' : '')
+        : '<div class="kv n ' + plClass(p.pct || 0) + '">' + C.spct(p.pct) + '</div><div class="ks n ' + plClass(p.pnlCents) + '">' + C.money(p.pnlCents, true) + '</div>') + '</div>';
+    };
+    var fl = sc.flows.filter(function (f) { return f.session <= today; });
+    var flWord = function (f) { return C.md(f.session) + ' ' + (f.kind === 'start' ? '시작 ' : f.cents < 0 ? '출금 ' : '입금 ') + C.money(Math.abs(f.cents)); };
+    var flText = !fl.length ? '' : fl.length <= 3 ? ' (' + fl.map(function (f, i) { return (i ? (f.cents < 0 ? ' − ' : ' + ') : f.cents < 0 ? '− ' : '') + flWord(f); }).join('') + ')'
+      : ' (' + flWord(fl[0]) + ' 외 입금·출금 ' + (fl.length - 1) + '번)';
+    var top = '<section class="card"><div class="kpis ret" style="padding-top:12px">' + kpi('이번 달', r.month) + kpi('올해', r.year) + kpi('누적 실현', r.total, true) + '</div>' +
+      (fx ? '<p class="note n">원화는 마지막 환율로 (' + (fx.date ? C.md(fx.date) + ' 장 마감 뒤 ' : '') + fx.rate.toLocaleString('en-US', { minimumFractionDigits: 2 }) + '원) · 보기만</p>' : '') +
+      '<div class="bcline n">넣은 돈 <b>' + C.money(r.invested) + '</b>' + flText + '<br>% = 판 손익 ÷ 그 기간 첫날의 내 돈. 중간에 넣거나 뺀 돈은 그날부터 더하고 빼요.</div></section>';
+    // 막대: 위·아래로 가장 큰 값에 맞춰 0 선 자리를 정한다 (30~160 사이 130px)
+    var ms = r.months.slice(-6), up = 0, dn = 0;
+    ms.forEach(function (m) { if (m.pct > 0) up = Math.max(up, m.pct); if (m.pct < 0) dn = Math.max(dn, -m.pct); });
+    var W = 340, slot = (W - 20) / Math.max(ms.length, 1), bw = Math.min(36, slot * 0.6), span = up + dn;
+    var zero = span > 0 ? 30 + 130 * up / span : 95, sc2 = span > 0 ? 130 / span : 0;
+    var bars = ms.map(function (m, i) {
+      var cx = 20 + slot * (i + 0.5), v = m.pct || 0, h = Math.max(v ? 2 : 0, Math.abs(v) * sc2), y = v >= 0 ? zero - h : zero;
+      var lab = m.pct === null ? '—' : (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v * 100).toFixed(2);
+      return (h ? '<rect class="' + (v >= 0 ? 'bup' : 'bdn') + '" x="' + (cx - bw / 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + h.toFixed(1) + '" rx="4"></rect>' : '') +
+        '<text class="tl ' + (v > 0 ? 'tlbuy' : v < 0 ? 'tlsell' : 'tlz') + '" x="' + cx.toFixed(1) + '" y="' + (v >= 0 ? y - 6 : y + h + 14).toFixed(1) + '" text-anchor="middle">' + lab + '</text>' +
+        '<text class="ax" x="' + cx.toFixed(1) + '" y="192" text-anchor="middle">' + (+m.ym.slice(5)) + '월</text>';
+    }).join('');
+    var chart = '<section class="card"><div class="ch"><h2 class="ct">월별 수익률</h2><span class="meta">그달 첫날의 내 돈 기준</span></div><div class="chart">' +
+      '<svg class="csvg" viewBox="0 0 340 200" role="img" aria-label="월별 수익률 ' + ms.map(function (m) { return (+m.ym.slice(5)) + '월 ' + C.spct(m.pct); }).join(', ') + '">' +
+      '<line class="grid" x1="20" y1="' + zero.toFixed(1) + '" x2="330" y2="' + zero.toFixed(1) + '"></line>' + bars + '</svg></div></section>';
+    var list = sc.sells.map(function (x, i) { return [x, i]; }).sort(function (a, b) { return a[0].sellDate < b[0].sellDate ? 1 : a[0].sellDate > b[0].sellDate ? -1 : b[1] - a[1]; }).map(function (p) { return p[0]; }).slice(0, 15);
+    var rows = list.length ? list.map(function (x) {
+      return '<div class="row2"><span class="side ssell">' + (x.type === 'MOC' ? 'MOC' : x.type === 'LOC' ? 'LOC' : '직접') + '</span>' +
+        '<div class="lmid"><div class="l1 n">' + esc(x.lotId) + '</div><div class="sub n">' + C.md(x.sellDate) + ' · $' + C.price(x.entry) + ' → $' + C.price(x.exit) + ' × ' + x.qty + '</div></div>' +
+        '<div class="lrt"><div class="lamt n ' + plClass(x.pnl) + '">' + C.usd(x.pnl, true) + '</div><div class="res n ' + plClass(x.pnl) + '">' + C.spct(x.exit / x.entry - 1) + '</div></div></div>';
+    }).join('') : '<p class="empty">아직 판 기록이 없어요.</p>';
+    return head + '<span class="pill n">판 기록 ' + sc.sells.length + '건</span></div>' + top + chart +
+      '<section class="card"><div class="ch"><h2 class="ct">최근 판 기록</h2><span class="meta">최신 ' + list.length + '건</span></div>' + rows + '</section></div></div>';
   }
 
   /* ── 드문 순간 카드 (모드 바뀐 주 · BC 갱신 날 — 한 번만, 아무 데나 누르면 닫힘) ── */
@@ -601,7 +695,7 @@
     var scr = document.createElement('div');
     scr.id = 'scr';
     scr.className = 'scr ' + (S.dir === 'b' ? 'enterb' : 'enterf');
-    scr.innerHTML = S.other || S.tab === 'home' ? homeHtml(sc) : S.tab === 'mode' ? modeHtml(sc) : laterHtml(S.tab === 'lots' ? '보유 Lot' : '수익');
+    scr.innerHTML = S.other || S.tab === 'home' ? homeHtml(sc) : S.tab === 'mode' ? modeHtml(sc) : S.tab === 'lots' ? lotsHtml(sc) : returnsHtml(sc);
     if (old) root.replaceChild(scr, old); else root.insertBefore(scr, root.firstChild);
     var boot = document.getElementById('boot');
     if (boot) boot.parentNode.removeChild(boot);
@@ -614,12 +708,13 @@
     renderOverlays();
   }
   function renderOverlays() {
-    var ad = document.querySelector('#adminl .scroll'), adTop = ad ? ad.scrollTop : 0;   // 관리 화면을 다시 그려도 보던 자리 그대로
+    var ad = document.querySelector('#adminl .scroll'), adTop = ad ? ad.scrollTop : 0;
+    var hp = document.querySelector('#helpl .scroll'), hpTop = hp ? hp.scrollTop : 0;   // 도움말도   // 관리 화면을 다시 그려도 보던 자리 그대로
     // 키보드가 떠 있는 채로 입력 칸을 지우면 아이폰이 화면을 밀린 채로 둔다 (10/26 형님 폰 — 단추가 안 눌림). 아이폰은 지울 때 손 떼기(blur)를 안 알려 줘서 먼저 놓는다
     // 창을 닫을 때도, 창이 그대로 다시 그려질 때(옵션 단추·목록 고르기)도
-    var shut = document.activeElement && document.activeElement.closest && document.activeElement.closest('#menuwrap,#pinwrap,#formwrap,#sheetwrap,#adminl');
+    var shut = document.activeElement && document.activeElement.closest && document.activeElement.closest('#menuwrap,#pinwrap,#formwrap,#sheetwrap,#adminl,#helpl');
     if (shut) document.activeElement.blur();
-    ['menuwrap', 'moment', 'pinwrap', 'formwrap', 'sheetwrap', 'adminl'].forEach(function (id) { var e = document.getElementById(id); if (e) e.parentNode.removeChild(e); });
+    ['menuwrap', 'moment', 'pinwrap', 'formwrap', 'sheetwrap', 'adminl', 'helpl'].forEach(function (id) { var e = document.getElementById(id); if (e) e.parentNode.removeChild(e); });
     if (shut) unshift();
     if (S.menu) {
       var m = document.createElement('div');
@@ -630,10 +725,12 @@
       var boss = !S.other && S.screen && S.screen.admin ? '<div class="msep"></div><button class="mi" role="menuitem" data-act="admin">관리 <span class="pill amber">관리자만</span></button>' : '';
       m.innerHTML = '<button class="mscrim" data-act="menu-close" aria-label="메뉴 닫기" tabindex="-1"></button>' +
         '<div class="menu glass" role="menu"><button class="mi" role="menuitem" data-act="form-deposit">' + nm + '입금</button>' +
-        '<button class="mi" role="menuitem" data-act="form-edit">' + (S.other ? esc(S.other.name) + ' 장부 ' : '장부 ') + '수정</button>' + (S.other ? '' : reg) + boss + '</div>';
+        '<button class="mi" role="menuitem" data-act="form-edit">' + (S.other ? esc(S.other.name) + ' 장부 ' : '장부 ') + '수정</button>' + (S.other ? '' : reg) +
+          (S.other ? '' : '<button class="mi" role="menuitem" data-act="help">도움말</button>') + boss + '</div>';
       root.appendChild(m);
     }
-    root.classList.toggle('adminopen', !!S.adminOpen);
+    root.classList.toggle('adminopen', !!S.adminOpen || !!S.help);
+    if (S.help) { renderHelp(); var hp2 = document.querySelector('#helpl .scroll'); if (hp2) hp2.scrollTop = hpTop; }
     if (S.adminOpen) { renderAdmin(); var ad2 = document.querySelector('#adminl .scroll'); if (ad2) ad2.scrollTop = adTop; }
     if (S.pin) renderPin();
     else if (S.form) renderForm();
@@ -686,9 +783,14 @@
     else if (act === 'pin-later') { S.pin = null; S.pinLater = true; renderOverlays(); }
     else if (act === 'pin-go') registerPhone();
     else if (act === 'form-deposit' || act === 'form-edit') openForm(act === 'form-deposit' ? 'deposit' : 'edit');
+    else if (act === 'lot') { S.sheet = { kind: 'lot', id: t.getAttribute('data-lot') }; renderOverlays(); }
+    else if (act === 'lot-fix') { var lp = lotPreset(S.sheet.id, t.getAttribute('data-k')); S.sheet = null; openForm('edit', lp); }
+    else if (act === 'help') { S.menu = false; S.help = { tab: 'use', slide: true }; renderOverlays(); }
+    else if (act === 'help-close') { S.help = null; renderOverlays(); }
+    else if (act === 'help-tab') { S.help.tab = t.getAttribute('data-v'); renderOverlays(); var hs = document.querySelector('#helpl .scroll'); if (hs) hs.scrollTop = 0; }
     else if (act === 'form-close') { S.form = null; renderOverlays(); }
     else if (act === 'form-pick') { S.form.type = t.getAttribute('data-type'); S.form.fields = defaultsFor(S.form.type); S.form.pv = null; renderOverlays(); schedulePreview(); }
-    else if (act === 'form-back') { S.form.type = null; S.form.pv = null; renderOverlays(); }
+    else if (act === 'form-back') { S.form.type = null; S.form.pv = null; S.form.miss = null; renderOverlays(); }
     else if (act === 'form-opt') { S.form.fields[t.getAttribute('data-k')] = t.getAttribute('data-v'); if (S.form.pv) S.form.pv.stale = true; renderOverlays(); schedulePreview(); }
     else if (act === 'form-save') saveForm();
     else if (act === 'placed') markPlaced(t);
@@ -821,19 +923,39 @@
     if (type === 'close_set') { f.symbol = 'SOXL'; f.date = L && L.market && L.market.symbols.SOXL.missing.length ? L.market.symbols.SOXL.missing[0] : ''; }
     return f;
   }
-  function openForm(kind) {
+  function openForm(kind, preset) {
     S.menu = false;
     if (!load('phoneKey')) { S.pin = { msg: '입력하려면 먼저 이 폰을 등록해 주세요', ok: false, busy: false }; renderOverlays(); return; }
     S.form = { kind: kind, type: kind === 'deposit' ? 'deposit' : null, fields: kind === 'deposit' ? { memo: '' } : {}, pv: null, busy: false, msg: '', lists: null,
-      target: S.other ? S.other.id : null };
+      target: S.other ? S.other.id : null, preset: preset || null };
     renderOverlays();
     if (kind === 'edit') {
       windowCall({ a: 'lists', phone: load('phoneKey'), target: S.form.target || undefined }).then(function (r) {
         if (!S.form) return;
         if (!r.ok) throw new Error(r.message || r.why);
         S.form.lists = r.lists;
+        if (S.form.preset) usePreset();
         renderOverlays();
+        if (S.form.type) schedulePreview();
       }).catch(function (e) { if (S.form) { S.form.msg = '목록을 못 받았어요 (' + e.message + ')'; renderOverlays(); } });
+    }
+  }
+  /** 보유 Lot에서 고른 것: 그 항목을 열고 Lot·주문을 골라 둔다 (목록에 없으면 비워 둠 — 사람이 고른다) */
+  function usePreset() {
+    var F = S.form, P = F.preset, L = F.lists;
+    F.preset = null;
+    F.type = P.type;
+    F.fields = defaultsFor(P.type);
+    var pick = P.fields.pick;
+    var has = P.type === 'manual_sell' ? L.lots.some(function (l) { return l.lotId === pick; })
+      : P.type === 'cancel_event' ? L.events.some(function (e) { return e.id === pick; })
+      : L.orders.some(function (o) { return o.id === pick && (P.type === 'not_placed' || o.result); });
+    if (has) F.fields.pick = pick;
+    else F.miss = (P.type === 'cancel_event' ? '그 앱 밖 매수 입력(' + pick + ')' : P.type === 'manual_sell' ? '그 Lot(' + pick + ')' : pick + ' 주문') +
+      '을 목록에서 찾지 못했어요. 장부를 옮기기 전에 산 Lot일 수 있어요. 아래에서 고르거나 관리자에게 물어 주세요.';
+    if (has && P.type === 'fill_differs') {
+      var o = L.orders.filter(function (x) { return x.id === pick; })[0];
+      F.fields.price = o.result.status === 'filled' ? C.price(o.result.price) : ''; F.fields.qty = String(o.result.qty);
     }
   }
   /** 지금 칸들 → 창구에 보낼 입력 (모자라면 null과 이유) */
@@ -1026,7 +1148,7 @@
         '<div class="items">' + EDIT_ITEMS.concat(F.lists.market && !F.target ? MARKET_ITEMS : []).map(function (x) { return '<button class="opt press" data-act="form-pick" data-type="' + x[0] + '"><span class="ot">' + x[1] + '</span><span class="os">' + x[2] + '</span></button>'; }).join('') + '</div>';
     } else {
       body = (F.target ? '<div class="alert al-teal"><div class="al-head">' + name + ' 장부를 고치는 중</div>저장하면 ' + name + ' 앱에 ‘관리자가 고침’으로 보여요.</div>' : '') +
-        formBody() + field('memo', '한 줄 메모 (선택)', 'maxlength="100"') + '<div id="pvbox"></div>' +
+        (F.miss ? '<div class="prev warn">' + esc(F.miss) + '</div>' : '') + formBody() + field('memo', '한 줄 메모 (선택)', 'maxlength="100"') + '<div id="pvbox"></div>' +
         '<div class="two">' + (F.kind === 'edit' ? '<button class="btn ghost2 press" data-act="form-back">뒤로</button>' : '<button class="btn ghost2 press" data-act="form-close">닫기</button>') +
         '<button class="btn primary press" id="pvsave" data-act="form-save" disabled>저장</button></div>';
     }
@@ -1044,6 +1166,7 @@
     if (!k || !S.form) return;
     if (S.form.fields[k] === e.target.value) return;   // 칸에서 손을 뗄 때(change) 같은 값이면 다시 계산하지 않는다 — 저장 단추를 누르는 순간 막히지 않게
     S.form.fields[k] = e.target.value;
+    if (k === 'pick' && S.form.miss) { S.form.miss = null; var mw = document.querySelector('#formwrap .sheetin > .prev.warn'); if (mw) mw.parentNode.removeChild(mw); }   // 사람이 골랐으면 '못 찾음' 글은 뺀다
     // 날짜·주문을 고르면 체결 칸을 그 주문 값으로 채워 둔다
     if (k === 'pick' && S.form.type === 'fill_differs' && S.form.lists) {
       var o = S.form.lists.orders.filter(function (x) { return x.id === e.target.value; })[0];
@@ -1067,6 +1190,16 @@
     scr.querySelectorAll('.tk,.rise,.cl,.cd,.chk path').forEach(function (x) { x.style.animation = 'none'; });
     var s2 = document.getElementById('scroll');
     if (s2) { s2.scrollTop = top; s2.addEventListener('scroll', onScroll, { passive: true }); onScroll({ currentTarget: s2 }); }
+  }
+  /** 보유 Lot·수익 탭을 보고 있을 때 새 화면 (보던 자리 그대로). 고치기 창·장부 수정이 열려 있으면 닫을 때까지 그대로 */
+  function redrawTab() {
+    if ((S.tab !== 'lots' && S.tab !== 'returns') || S.other || S.sheet || S.form || !cur()) return;
+    var s = document.querySelector('#scr .scroll'), top = s ? s.scrollTop : 0;
+    var scr = document.getElementById('scr');
+    scr.className = 'scr';
+    scr.innerHTML = S.tab === 'lots' ? lotsHtml(cur()) : returnsHtml(cur());
+    var s2 = document.querySelector('#scr .scroll');
+    if (s2) s2.scrollTop = top;
   }
   function markPlaced(btn) {
     var nx = S.screen && S.screen.next;
@@ -1188,6 +1321,68 @@
     }).catch(function (e) { btn.disabled = false; btn.textContent = '다시 돌리기'; toast(e.message || '창구에 닿지 못했어요'); });
   }
 
+  /* ── 도움말 (10/26 형님: ⋯ 메뉴 안. 50대도 알기 쉽게 — 앱 쓰는 법과, 주문을 잘못 넣거나 깜빡했을 때) ── */
+  var PATH = function (t) { return '<span class="path">' + t + '</span>'; };
+  function hcard(num, title, body, warn) {
+    return '<section class="hcard"><div class="hhead"><span class="hnum' + (warn ? ' warn' : '') + '">' + num + '</span><h3 class="htitle">' + title + '</h3></div>' + body + '</section>';
+  }
+  function steps(list) { return '<ol class="steps">' + list.map(function (x, i) { return '<li><span class="sn">' + (i + 1) + '</span><span>' + x + '</span></li>'; }).join('') + '</ol>'; }
+  function exo(side, type, price, qty, lot, say) {
+    return '<div class="exo ' + side.toLowerCase() + '"><span class="eside">' + side + '</span><span class="et">' + type + '</span>' + (price ? '<span class="ep n">' + price + '</span>' : '') +
+      '<span class="eq n">× ' + qty + '주</span>' + (lot ? '<span class="tklot n">' + lot + '</span>' : '') + '</div><p class="arrow">→ ' + say + '</p>';
+  }
+  function helpUse() {
+    var T = function (t) { return '<p class="htext">' + t + '</p>'; }, S2 = function (t) { return '<p class="hsmall">' + t + '</p>'; };
+    return hcard(1, '하루에 할 일은 두 번',
+        '<div class="when2"><span class="wt">아침 (7시쯤부터)</span><span class="wd">앱을 열어 <b>어젯밤 결과</b>를 보고, <b>증권사 앱과 비교</b> 칸의 두 숫자를 증권사 앱과 맞춰 봐요.</span></div>' +
+        '<div class="when2"><span class="wt">저녁 (밤 10시 반 전)</span><span class="wd">홈 맨 위 <b>오늘 밤 주문</b>을 증권사에 그대로 넣어요.</span></div>' +
+        S2('11월 초 ~ 3월 초(미국 겨울 시간)에는 한 시간씩 늦어요: 아침 8시쯤 · 밤 11시 반 전.') + S2('계산은 앱이 밤사이 알아서 해요. 누를 단추는 없어요.')) +
+      hcard(2, '증권사에 주문 넣기',
+        T('‘오늘 밤 주문’ 카드 <b>한 칸 = 주문 한 건</b>이에요. 종목은 늘 <b>SOXL</b>. 아래는 예시예요.') +
+        exo('BUY', 'LOC', '98.93', 13, '', '매수 · 주문 종류 LOC · 가격 98.93 · 수량 13') +
+        exo('SELL', 'LOC', '103.78', 16, 'L-20261016', '매도 · 주문 종류 LOC · 가격 103.78 · 수량 16') +
+        exo('SELL', 'MOC', '', 15, 'L-20261015', '매도 · 주문 종류 MOC · 가격 없이 수량 15') +
+        steps(['<b>빨강 BUY = 매수</b>, <b>파랑 SELL = 매도</b>.', '<b>LOC</b>는 ‘장 마감 때 이 가격이면 사고팔기’, <b>MOC</b>는 ‘장 마감 때 무조건 팔기’예요.',
+          'SELL은 Lot마다 <b>따로 한 건씩</b> 넣어요. 같은 가격이어도 합치지 않아요.', '카드 위 날짜가 <b>오늘 밤</b>인지 봐요.'])) +
+      hcard(3, '아침에 맞춰 보기', T('홈 아래 <b>증권사 앱과 비교</b> 칸의 <b>보유 수량</b>과 <b>달러 잔고</b>를 증권사 앱과 비교해요.') + T('둘 다 같으면 끝이에요. 다르면 ‘이럴 땐 이렇게’를 봐 주세요.')) +
+      hcard(4, '화면에 이런 표시가 뜨면',
+        T('<b class="tyel">노란 ‘주문 바뀜’</b> — 오늘 밤 주문이 바뀌었어요. 이미 넣었다면 증권사에서 바뀐 대로 고쳐요.') +
+        T('<b class="torg">주황 ‘오래된 화면’</b> — 주문이 흐리게 보여요. <b>이 주문으로 넣지 마세요.</b> 몇 분 뒤 앱을 다시 열어요.') +
+        T('<b class="tyel">‘BUY 없음: 현금 부족’</b> — 오늘 밤은 SELL만 넣어요.')) +
+      hcard(5, '돈을 넣거나 뺄 때', T('홈 오른쪽 위 ' + PATH('⋯ 메뉴') + ' → ' + PATH('입금') + '.') +
+        T('<b>BC에도 반영</b> — 다음 BC 날부터 주문이 커져요.<br><b>현금만</b> — 주문 크기는 그대로, 현금만 늘어요.') +
+        T('돈을 뺄 때는 ' + PATH('장부 수정') + ' → ' + PATH('현금만 입금·출금') + '(잠시 뺄 때) 또는 ' + PATH('영구 출금') + '.'));
+  }
+  function helpFix() {
+    var T = function (t) { return '<p class="htext">' + t + '</p>'; };
+    return '<p class="hsecsub">고치는 곳은 모두 ' + PATH('⋯ 메뉴') + ' → ' + PATH('장부 수정') + '이에요. 저장 전에 무엇이 바뀌는지 먼저 보여 줘요.</p>' +
+      hcard('!', '주문 넣는 걸 깜빡했어요', steps(['다음 날 아침, 증권사에 <b>체결이 없는지</b> 확인해요.', PATH('장부 수정') + ' → ' + PATH('주문 안 냄') + '.',
+        '못 넣은 주문을 골라요. <b>일부만</b> 못 넣었으면 그것만 골라요.', '미리보기를 보고 <b>저장</b>.']) +
+        '<p class="hsmall">안 고치면 앱은 종가대로 ‘체결’로 적어서, 증권사와 숫자가 달라져요.</p>', true) +
+      hcard('!', '가격이나 수량을 잘못 넣었어요', T('<b>장 시작 전에 알았으면</b> — 증권사에서 주문을 고치거나 취소하면 끝이에요. 앱은 그대로 둬요.') +
+        T('<b>체결된 뒤에 알았으면</b> — 아침에 증권사 체결 내역을 보고 ' + PATH('체결이 달랐음') + ' → 그 주문 → 실제 가격·수량. 아예 안 됐으면 수량 0.'), true) +
+      hcard('!', '앱에 없는 주문을 넣었어요', T('두 번 넣었거나 직접 사고팔았으면 ' + PATH('앱 밖 매수') + ' 또는 ' + PATH('앱 밖 매도') + ' → 날짜·가격·수량.') +
+        T('<b>보유 Lot</b> 탭에서 그 Lot을 눌러도 같은 창이 열려요.'), true) +
+      hcard('!', '증권사 숫자와 달라요', steps(['먼저 위의 세 경우인지 확인해요.', '<b>달러 잔고만</b> 다르면 ' + PATH('현금 = $X') + '에 증권사 달러 잔고를 넣어요.',
+        '<b>보유 수량</b>이 다르고 이유를 모르겠으면 관리자에게 물어요.']), true) +
+      hcard('!', '잘못 고쳤어요', T(PATH('예외 취소') + ' → 잘못 넣은 것을 골라 저장하면 되돌아가요.'), true) +
+      hcard('!', '장 시작 뒤에 고쳤어요', T('오늘 밤 주문은 장이 시작되면 <b>고정</b>돼요. 고친 내용은 <b>다음 밤 주문부터</b> 들어가요.'), true) +
+      hcard('!', '앱이 이상해요', T('<b>“새 링크를 받아 주세요”</b> · <b>PIN을 5번 틀림</b> — 관리자에게 새 링크와 PIN을 받아요.') +
+        T('<b>주황 화면이 오래 계속돼요</b> — 관리자에게 알려 주세요. 그동안 그 주문은 넣지 마세요.'), true);
+  }
+  function renderHelp() {
+    var H = S.help, w = document.createElement('div');
+    w.id = 'helpl';
+    w.className = 'adminl' + (H.slide ? ' slide' : '');
+    H.slide = false;   // 미끄러져 들어오기는 처음 한 번만 (창이 다시 그려질 때는 그대로)
+    var seg = [['use', '앱 쓰는 법'], ['fix', '이럴 땐 이렇게']];
+    w.innerHTML = '<div class="scr"><div class="hd"><button class="back press" data-act="help-close">' + BACK + '닫기</button></div>' +
+      '<div class="scroll"><div class="wrap helpw"><div class="titlerow"><h1 class="h1">도움말</h1></div>' +
+      '<div class="seg" role="tablist"><span class="segind" style="transform:translateX(' + (H.tab === 'fix' ? 100 : 0) + '%)"></span>' + seg.map(function (x) {
+        return '<button class="segb' + (H.tab === x[0] ? ' on' : '') + '" role="tab" aria-selected="' + (H.tab === x[0]) + '" data-act="help-tab" data-v="' + x[0] + '">' + x[1] + '</button>';
+      }).join('') + '</div>' + (H.tab === 'fix' ? helpFix() : helpUse()) + '</div></div></div>';
+    root.appendChild(w);
+  }
   function renderAdmin() {
     var w = document.createElement('div');
     w.id = 'adminl';
@@ -1244,7 +1439,13 @@
   function renderSheet() {
     var Sh = S.sheet, w = document.createElement('div'), title, body;
     w.id = 'sheetwrap';
-    if (Sh.kind === 'accept') {
+    if (Sh.kind === 'lot') {
+      var lt = lotById(cur(), Sh.id);
+      title = esc(Sh.id);
+      body = (lt ? '<p class="sp n">' + C.modeName(lt.mode) + ' · ' + C.md(lt.buyDate) + '에 $' + C.price(lt.entry) + ' × ' + lt.qty + '주</p>' : '') +
+        lotFixes(Sh.id).map(function (x) { return '<button class="opt press" data-act="lot-fix" data-k="' + x[0] + '"><span class="ot">' + x[1] + '</span><span class="os">' + x[2] + '</span></button>'; }).join('') +
+        '<p class="sp">고르면 장부 수정 창이 칸이 채워진 채 열려요. 미리보기를 보고 저장해요.</p>';
+    } else if (Sh.kind === 'accept') {
       title = '로봇을 다시 돌릴까요?';
       body = '<p class="sp">지금 깃허브에 있는 장부를 새 기준으로 삼고 로봇을 다시 돌려요. 사라진 기록은 돌아오지 않아요. 잘못 누르면 바뀐 장부로 주문이 나가요.</p>' +
         '<button class="ck press' + (Sh.ok ? ' on' : '') + '" data-act="accept-check" role="checkbox" aria-checked="' + Sh.ok + '"><span class="box">' + (Sh.ok ? '✓' : '') + '</span>위의 바뀐 내용을 확인했고, 관리자가 한 일이 맞아요</button>' +
@@ -1451,7 +1652,7 @@
     S.newer = false;
     var was = S.screen;
     S.screen = sc;
-    if (S.tab !== 'home') return;   // 다른 탭이면 홈으로 올 때 새 화면
+    if (S.tab !== 'home') { redrawTab(); return; }   // 홈이 아니면 그 탭만 다시 (모드 탭은 시뮬레이터에 넣던 값이 지워지니 홈으로 올 때)
     S.before = was;
     redrawHome();
     S.moment = pickMoment(sc);

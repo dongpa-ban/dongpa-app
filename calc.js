@@ -154,11 +154,61 @@ var DongpaCalc = (function () {
   function inZone(r, z) { return z.to === 100 ? (r >= z.from && r <= z.to) : (r >= z.from && r < z.to); }
   function modeName(m) { return m === 'safe' ? '안전' : m === 'aggressive' ? '공세' : '—'; }
 
+  /* ── 수익 (10/26 형님: 판 손익 ÷ 그 기간 첫날의 '내 돈') ─────────
+   * 내 돈 = 넣은 돈(시작 + 입금 − 출금, 화면 파일 flows) + 그 기간 전까지 판 손익.
+   * 기간 중에 넣거나 뺀 돈은 그날부터 바탕에 더하고 뺀다(같은 날이면 판 것보다 먼저). 기간 안에 판 손익은 바탕에 안 더한다.
+   * % = 판 기록마다 (그 손익 ÷ 그때의 바탕)을 더한 것. 평가손익(안 판 Lot)은 넣지 않는다. 보여 주기만 — 장부 계산에 안 쓴다.
+   * 바탕이 0 이하인 때 판 것(넣은 돈보다 많이 뺀 뒤 등)은 %에서만 빼고 손익엔 넣는다 — 그 한 건 때문에 기간 전체가 '—'가 되지 않게. */
+  function cents2(x) { return Math.round(Number(x) * 100); }
+  function sortedFacts(sells, flows) {
+    var ev = [];
+    (flows || []).forEach(function (f) { ev.push({ d: f.session, k: 0, c: Math.round(f.cents) }); });
+    (sells || []).forEach(function (x) { ev.push({ d: x.sellDate, k: 1, c: cents2(x.pnl) }); });
+    return ev.sort(function (a, b) { return a.d < b.d ? -1 : a.d > b.d ? 1 : a.k - b.k; });
+  }
+  /** from~to(둘 다 포함, 'YYYY-MM-DD') 사이 판 손익과 % — { pnlCents, pct(소수, 판 것이 있는데 모두 바탕 0 이하이면 null), n(판 건수) } */
+  function periodReturn(sells, flows, from, to) {
+    var ev = sortedFacts(sells, flows), base = 0, pnl = 0, r = 0, n = 0, used = 0;
+    ev.forEach(function (e) {
+      if (e.d < from) { base += e.c; return; }
+      if (e.d > to) return;
+      if (e.k === 0) { base += e.c; return; }
+      pnl += e.c; n++;
+      if (base > 0) { r += e.c / base; used++; }
+    });
+    return { pnlCents: pnl, pct: n && !used ? null : r, n: n };
+  }
+  /** 수익 탭 숫자: today = 'YYYY-MM-DD'(이번 달·올해를 정하는 날) */
+  function returnsOf(sells, flows, today) {
+    var ym = today.slice(0, 7), y = today.slice(0, 4);
+    var ev = sortedFacts(sells, flows), first = ev.length ? ev[0].d.slice(0, 7) : ym;
+    var months = [];
+    for (var m = first; m <= ym; m = nextYm(m)) {
+      var r = periodReturn(sells, flows, m + '-01', m + '-31');
+      months.push({ ym: m, pnlCents: r.pnlCents, pct: r.pct, n: r.n });
+    }
+    return {
+      month: periodReturn(sells, flows, ym + '-01', ym + '-31'),
+      year: periodReturn(sells, flows, y + '-01-01', y + '-12-31'),
+      total: periodReturn(sells, flows, '0000-00-00', '9999-12-31'),
+      months: months,
+      invested: (flows || []).reduce(function (a, f) { return f.session <= today ? a + Math.round(f.cents) : a; }, 0)
+    };
+  }
+  function nextYm(m) { var yy = +m.slice(0, 4), mm = +m.slice(5, 7) + 1; if (mm > 12) { yy++; mm = 1; } return yy + '-' + pad(mm); }
+  /** 0.0291 → '+2.91%' · −0.0025 → '−0.25%' · null → '—' */
+  function spct(x) {
+    if (x === null || x === undefined || !isFinite(x)) return '—';
+    var s = Math.abs(x * 100).toFixed(2);
+    return s === '0.00' ? '0.00%' : (x < 0 ? '−' : '+') + s + '%';
+  }
+
   return {
     parts: parts, easternToUtcMs: easternToUtcMs, openMs: openMs, closeMs: closeMs,
     md: md, mdw: mdw, dowOf: dowOf, kstHm: kstHm, kstMd: kstMd, kstWhen: kstWhen, addDays: addDays, span: span,
     sessionState: sessionState,
     money: money, usd: usd, won: won, price: price, pct: pct, krwApprox: krwApprox, rollDigits: rollDigits,
+    periodReturn: periodReturn, returnsOf: returnsOf, spct: spct,
     RULES: RULES, decideModeRule: decideModeRule, ZONES: ZONES, TICKS: TICKS, vis: vis, inZone: inZone, modeName: modeName
   };
 })();
