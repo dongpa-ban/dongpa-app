@@ -1,5 +1,5 @@
 /* 동파앱 화면 — 10/23 확정 시안(철검) 그대로. 시안: 시험/3단계/시안/V2.dc.html */
-@font-face{font-family:"PretendardDong";src:url("font/pretendard-dong.woff2?v=74b650c-7") format("woff2");font-weight:45 920;font-display:swap}
+@font-face{font-family:"PretendardDong";src:url("font/pretendard-dong.woff2?v=c93aa17-8") format("woff2");font-weight:45 920;font-display:swap}
 :root{color-scheme:dark;--bg:#000;--card:#111113;--nested:#1e1e20;--buy:#ff4a5a;--sell:#4c94ff;--buyt:#ff6b78;--sellt:#6aa8ff;--aggr:#ff9b9b;--safe:#8fb4ff;--top:env(safe-area-inset-top,0px);--bot:env(safe-area-inset-bottom,0px)}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:#000;color:#fff;overscroll-behavior:none}
@@ -23,6 +23,9 @@ button{font:inherit;color:inherit;cursor:pointer}
 .hd{display:flex;align-items:center;justify-content:space-between;height:calc(52px + var(--top));padding:var(--top) 12px 0 18px;flex:none;position:relative;z-index:3}
 .hd.over{position:absolute;left:0;right:0;top:0;transition:background-color 220ms,box-shadow 220ms}
 .hd.over.glassy{background:rgba(0,0,0,.55);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);box-shadow:0 .5px 0 rgba(255,255,255,.12)}
+/* 아이폰 홈 화면 앱(iOS 26.1~): 시스템이 맨 위에 덮는 어두운 띠 밑으로 머리줄을 내리고, 내릴 때 머리줄은 흐린 유리 대신 검정 (띠와 겹쳐 흐려 보이지 않게) */
+:root.iosapp{--top:calc(env(safe-area-inset-top,0px) + 22px)}
+.iosapp .hd.over.glassy{background:#000;-webkit-backdrop-filter:none;backdrop-filter:none}
 .ctitle{position:absolute;left:50%;top:var(--top);line-height:52px;font-size:15px;font-weight:700;white-space:nowrap;opacity:0;transform:translate(-50%,6px);transition:opacity 200ms,transform 260ms cubic-bezier(.23,1,.32,1);pointer-events:none}
 .ctitle.on{opacity:1;transform:translate(-50%,0)}
 .brand{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;transition:opacity 200ms}

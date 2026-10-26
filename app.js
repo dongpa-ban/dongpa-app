@@ -18,9 +18,12 @@
 (function () {
   'use strict';
   var C = DongpaCalc;
+  // 아이폰 홈 화면 앱: iOS 26.1부터 시스템이 화면 맨 위(상태 막대와 그 아래 조금)에 어두운 그러데이션을 덮는다.
+  // 페이지에서 끌 수 없어서 머리줄을 그 띠 밑으로 내린다 (app.css .iosapp — 10/26 형님 폰: '동파앱'·시각 윗부분이 흐림)
+  if (window.navigator.standalone === true) document.documentElement.classList.add('iosapp');
   var Q = new URLSearchParams(location.search);
   var KEY = 'dongpa.v1.';
-  var APP_VERSION = '74b650c-7';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
+  var APP_VERSION = 'c93aa17-8';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
   // 시험 도우미(?sample·?src·?now·?moment·?tab·?every)는 저장소 판에서만. 배포된 앱에서는 무시한다 — 누가 ?src=로 가짜 주문표를 띄우는 링크를 못 만들게 (10/26 검토 AI)
   var DEV = APP_VERSION === 'dev';
   function testQ(k) { return DEV ? Q.get(k) : null; }
@@ -367,7 +370,7 @@
   }
   function freshHtml(sc) {
     var stale = sc.next && C.sessionState(sc.next.session, now()).kind === 'stale';
-    return '<span class="n fresh' + (stale ? ' warnt' : '') + '">' + C.kstWhen(sc.at, now()) + '</span>';
+    return '<span class="n fresh' + (stale ? ' warnt' : '') + '">' + C.kstWhen(sc.at, now()) + ' 기준</span>';   // 지금 시각이 아니라 로봇이 이 화면을 계산한 시각 (10/26 형님)
   }
   function sumHtml(sc) {
     var os = tonightOrders(sc);
