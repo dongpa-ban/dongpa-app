@@ -10,7 +10,7 @@
  *                     (로봇/RobotPublish.gs와 같은 약속). 열쇠는 폰에도 저장해 # 없이 열려도 된다. 위조 확인이 실패하면 주문표를 안 띄운다
  *   ?sample=보통      시험: 화면/시험/견본/보통.json (견본 만들 때의 폰 시각까지 같이)
  *   ?src=주소         시험: 그 주소의 screen.json (잠그지 않은 것)
- * 시험 도우미: ?now=밀리초(폰 시각 고정) · ?moment=mode|bc(드문 순간 카드 보기) · ?tab=mode
+ * 시험 도우미: ?now=밀리초(폰 시각 고정) · ?moment=mode|bc(드문 순간 카드 보기) · ?tab=mode · ?every=밀리초(저장 뒤 새 화면 살피는 간격)
  *
  * 지난번에 본 화면은 폰에 저장해 두고(localStorage) 열자마자 먼저 보여 준다. 새 화면이 오면 바꾼다.
  * 지난번 화면과 비교해 주문가·잔고가 바뀐 자리만 숫자가 굴러간다.
@@ -20,8 +20,8 @@
   var C = DongpaCalc;
   var Q = new URLSearchParams(location.search);
   var KEY = 'dongpa.v1.';
-  var APP_VERSION = '3a59e0c-6';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
-  // 시험 도우미(?sample·?src·?now·?moment·?tab)는 저장소 판에서만. 배포된 앱에서는 무시한다 — 누가 ?src=로 가짜 주문표를 띄우는 링크를 못 만들게 (10/26 검토 AI)
+  var APP_VERSION = '74b650c-7';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
+  // 시험 도우미(?sample·?src·?now·?moment·?tab·?every)는 저장소 판에서만. 배포된 앱에서는 무시한다 — 누가 ?src=로 가짜 주문표를 띄우는 링크를 못 만들게 (10/26 검토 AI)
   var DEV = APP_VERSION === 'dev';
   function testQ(k) { return DEV ? Q.get(k) : null; }
 
@@ -275,7 +275,7 @@
     var h = sc.holdings;
     if (!h) return '';
     var cash = C.money(h.cashCents);
-    var b = S.before && S.before.holdings;
+    var b = !S.other && S.before && S.before.holdings;   // 남의 장부는 굴리지 않는다 (oldOrder처럼)
     var oldCash = b && b.cashCents !== h.cashCents ? C.money(b.cashCents) : null;
     var fx = sc.fx, bc = sc.bc, bv = sc.view && sc.view.bc;
     return '<section class="card"><div class="ch"><h2 class="ct">증권사 앱과 비교</h2><span class="meta">둘이 같으면 끝</span></div>' +
@@ -304,7 +304,10 @@
       out.push('<div class="alert al-gray rise" role="status"><div class="al-head">' + esc(x.who) + ga(x.who) + ' 고침 · <span class="n">' + C.kstWhen(x.at, now()) + '</span></div>' + esc(x.line) + (x.memo ? ' · ' + esc(x.memo) : '') + '</div>');
     });
     if (sc.next && sc.next.frozen) out.push('<div class="alert al-gray rise" role="status">고친 내용은 다음 세션부터 반영돼요. ' + C.mdw(sc.next.session) + ' 주문은 그대로예요.</div>');
-    if (S.newer && !S.other) out.push('<div class="alert al-teal2 rise" role="status" id="newer"><div class="al-head">새 내용 있음</div>로봇이 화면을 새로 만들었어요. 폰에 오기까지 몇 분 걸려요. 잠시 뒤 앱을 다시 열어 주세요.</div>');
+    var waiting = S.wait && (S.other ? S.wait.other === S.other.id : !S.wait.other);
+    if (waiting) out.push('<div class="alert al-teal2 rise" role="status" id="waiting"><div class="al-head">' + (S.newer && !S.other ? '새 내용 있음' : '반영 중') + '</div>' +
+      (S.newer && !S.other ? '로봇이 화면을 새로 만들었어요. 폰에 오면 저절로 바뀌어요.' : '로봇이 다시 계산하고 있어요. 보통 2~3분 뒤 저절로 바뀌어요.') + '</div>');
+    else if (S.newer && !S.other) out.push('<div class="alert al-teal2 rise" role="status" id="newer"><div class="al-head">새 내용 있음</div>로봇이 화면을 새로 만들었어요. 폰에 오기까지 몇 분 걸려요. 잠시 뒤 앱을 다시 열어 주세요.</div>');
     if (sc.problems && sc.problems.length) {
       out.push('<div class="alert al-org rise" role="alert"><div class="al-head">장부를 못 읽었어요</div>' + esc(sc.problems.join(' · ')) + '. 아래 숫자는 지난번 것이에요.</div>');
     }
@@ -342,8 +345,8 @@
     windowCall({ a: 'check', phone: load('phoneKey'), ledger: l, eventId: e, decision: d }).then(function (r) {
       if (!r.ok) throw new Error(r.why === 'not_admin' ? '관리자 폰에서만 할 수 있어요' : r.why === 'not_held' ? '이미 정해졌어요' : why(r.why));
       S.checked[l + '/' + e] = true;
-      redrawHome();
-      toast(d === 'confirm' ? '확인했어요 · 로봇이 10분 안에 반영해요' : '취소했어요');
+      if (d === 'confirm') startWait(true, r.after); else redrawHome();
+      toast(d === 'confirm' ? '확인했어요 · 2~3분 뒤 화면이 저절로 바뀌어요' : '취소했어요');
     }).catch(function (x) { btn.disabled = false; toast(x.message || '창구에 닿지 못했어요'); });
   }
 
@@ -609,7 +612,12 @@
   }
   function renderOverlays() {
     var ad = document.querySelector('#adminl .scroll'), adTop = ad ? ad.scrollTop : 0;   // 관리 화면을 다시 그려도 보던 자리 그대로
+    // 키보드가 떠 있는 채로 입력 칸을 지우면 아이폰이 화면을 밀린 채로 둔다 (10/26 형님 폰 — 단추가 안 눌림). 아이폰은 지울 때 손 떼기(blur)를 안 알려 줘서 먼저 놓는다
+    // 창을 닫을 때도, 창이 그대로 다시 그려질 때(옵션 단추·목록 고르기)도
+    var shut = document.activeElement && document.activeElement.closest && document.activeElement.closest('#menuwrap,#pinwrap,#formwrap,#sheetwrap,#adminl');
+    if (shut) document.activeElement.blur();
     ['menuwrap', 'moment', 'pinwrap', 'formwrap', 'sheetwrap', 'adminl'].forEach(function (id) { var e = document.getElementById(id); if (e) e.parentNode.removeChild(e); });
+    if (shut) unshift();
     if (S.menu) {
       var m = document.createElement('div');
       m.id = 'menuwrap';
@@ -632,6 +640,14 @@
       w.innerHTML = momentHtml(S.screen, S.moment);
       if (w.firstChild) { root.appendChild(w.firstChild); if (S.moment === 'bc') countBc(); }
     }
+  }
+
+  /** 아이폰: 키보드가 내려간 뒤에도 화면이 위로 밀려 있으면 보이는 단추와 눌리는 자리가 어긋난다 → 제자리로 */
+  function unshift() {
+    var a = document.activeElement;
+    if (a && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)) return;   // 다른 칸으로 옮겨 간 것
+    if (window.scrollY || window.scrollX) window.scrollTo(0, 0);
+    if (document.scrollingElement && document.scrollingElement.scrollTop) document.scrollingElement.scrollTop = 0;
   }
 
   function onScroll(e) {
@@ -935,7 +951,8 @@
       if (r.ok) {
         S.form = null;
         renderOverlays();
-        toast('저장했어요 · 로봇이 10분 안에 다시 계산해요');
+        startWait(true, r.after);
+        toast('저장했어요 · 2~3분 뒤 화면이 저절로 바뀌어요');
         return;
       }
       if (r.preview) { F.pv = { view: r.preview, input: P.input, note: r.why === 'changed' ? '그 사이 장부가 바뀌어 다시 계산했어요. 확인하고 다시 저장해 주세요' : '' }; }
@@ -1162,7 +1179,8 @@
       if (!r.ok) throw new Error(r.message || why(r.why));
       S.sheet = null; S.robotStop = null; S.adminData = null;
       renderOverlays();
-      toast('다시 돌려요 · 로봇이 10분 안에 다시 계산해요');
+      startWait(true, r.after);
+      toast('다시 돌려요 · 2~3분 뒤 다시 계산해요');
       loadAdmin();
     }).catch(function (e) { btn.disabled = false; btn.textContent = '다시 돌리기'; toast(e.message || '창구에 닿지 못했어요'); });
   }
@@ -1180,7 +1198,7 @@
   function viewLedger(id, btn) {
     btn.disabled = true;
     windowCall({ a: 'view', phone: load('phoneKey'), id: id }).then(function (r) {
-      if (!r.ok) throw new Error(r.why === 'no_screen' ? '아직 화면 파일이 없어요(로봇이 처음 돌기 전)' : why(r.why));
+      if (!r.ok) throw new Error(r.why === 'no_screen' ? '로봇이 이 장부를 처음 계산하는 중이에요. 2~3분 뒤 다시 눌러 주세요' : why(r.why));
       S.other = { id: id, name: r.screen.name || id, screen: r.screen };
       S.adminOpen = false;
       S.dir = 'f';
@@ -1345,6 +1363,8 @@
   }
 
   function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+  /** 장부 기록 번호(head)를 뺀 화면: 남의 장부 보기는 창구가 지금 장부 기록 번호를 붙여 줘서, 저장만 해도 바뀐다 (RobotAdmin.gs view) */
+  function bare(sc) { var o = {}; for (var k in sc) if (k !== 'head') o[k] = sc[k]; return o; }
 
   /** 새 내용 있음: 창구에 마지막으로 올린 화면 지문을 물어 지금 화면과 다르면 (깃허브가 퍼뜨리는 데 몇 분) */
   function checkLatest(sc) {
@@ -1355,9 +1375,85 @@
       // 지금 보이는 화면(저장본일 수도)과 비교
       if (!r.ok || !r.d || !S.screen || r.d === (S.screen.d || sc.d)) return;
       S.newer = true;
-      var el = document.getElementById('newer');
-      if (!el && S.tab === 'home') redrawHome();
+      if (!S.wait && !S.other) startWait();   // 그새 남의 장부를 열었으면 내 홈으로 올 때 '새 내용 있음'만
+      else if (S.tab === 'home' && !S.other) redrawHome();
     }).catch(function () { /* 창구가 없어도 화면은 그대로 */ });
+  }
+
+  /* ── 새 화면 저절로 받기 (10/26 형님) ─────────────────────
+   * 저장·확인 뒤에는 창구가 로봇을 곧 부른다(1분 안 — RobotWindow.gs markSoon_). 앱은 그동안만 20초마다 화면 파일을 살펴
+   * 저장 뒤에 로봇이 만든 화면(screen.at > 창구가 답한 after)이 오면 바꾸고 멈춘다(10분까지, 껐다 켜도 이어서).
+   * 로봇이 저장 뒤에 돌았는데 화면이 그대로면(바뀐 숫자 없음) 멈춘다. '새 내용 있음'일 때도 살핀다.
+   * 다른 앱에 갔다 돌아오면 한 번 살핀다. 입력·확인 창이 열려 있으면 건너뛴다(쓰던 것이 날아가지 않게). 그 밖에는 살피지 않는다
+   */
+  var WAIT = { FOR_MS: 10 * 60000, EVERY_MS: Number(testQ('every')) || 20000, ASK_EVERY: 3 };
+  /** keep: 앱을 껐다 켜도 이어서(저장·확인 뒤). after: 창구가 저장한 시각 — 없으면(옛 창구·'새 내용 있음') 지금 화면과 다르면 */
+  function startWait(keep, after) {
+    var o = S.other ? S.other.id : null;
+    S.wait = { until: Date.now() + WAIT.FOR_MS, other: o, d: o ? '' : (S.screen && S.screen.d) || '', after: Number(after) || 0, n: 0 };
+    if (!o && keep) save('wait', { until: S.wait.until, d: S.wait.d, after: S.wait.after });
+    if (!S.waitT) S.waitT = setInterval(lookAgain, WAIT.EVERY_MS);
+    redrawHome();
+  }
+  function stopWait() {
+    if (S.wait && !S.wait.other) save('wait', null);
+    S.wait = null;
+    if (S.waitT) { clearInterval(S.waitT); S.waitT = null; }
+  }
+  /** 기다리던 화면인가: 저장 시각을 알면 그 뒤에 로봇이 만든 것, 모르면 기다리기 시작할 때 보던 것과 다른 것 */
+  function awaited(W, sc) {
+    if (W.after) return Number(sc.at) > W.after;
+    return W.other ? true : !!(sc.d && sc.d !== W.d);
+  }
+  function lookAgain() {
+    var W = S.wait;
+    if (!W) return stopWait();
+    if (Date.now() > W.until || (W.other && (!S.other || S.other.id !== W.other))) { stopWait(); redrawHome(); return; }   // 시간이 지났거나 그 사람 장부를 나옴
+    if (!W.other && S.other) return;   // 내 화면을 기다리는데 관리에서 남의 장부를 보는 중: 돌아오면 다시
+    if (document.hidden) return;
+    refresh();
+    // 내 화면: 가끔 창구에 로봇이 언제 돌았는지 묻는다 — 저장 뒤에 돌았는데 올린 화면이 지금 것과 같으면 바뀐 숫자가 없는 것
+    if (!W.other && W.after && S.fid && ++W.n % WAIT.ASK_EVERY === 0) {
+      windowCall({ a: 'latest', f: S.fid }).then(function (r) {
+        if (S.wait === W && r.ok && r.ran > W.after && S.screen && r.d === S.screen.d) { stopWait(); redrawHome(); }
+      }).catch(function () { /* 다음에 */ });
+    }
+  }
+  /** 화면 파일을 다시 받아 바뀌었으면 바꾼다 */
+  function refresh() {
+    if (S.looking || S.form || S.sheet || S.pin || !cur()) return;
+    S.looking = true;
+    S.lookAt = Date.now();
+    var other = S.other;
+    var got = other ? windowCall({ a: 'view', phone: load('phoneKey'), id: other.id }).then(function (r) { return r.ok ? { screen: r.screen, ran: r.ran } : null; }) : source();
+    got.then(function (g) {
+      S.looking = false;
+      if (!g || !g.screen || S.form || S.sheet || S.pin || S.other !== other) return;
+      var sc = g.screen, W = S.wait;
+      var mineW = W && (other ? W.other === other.id : !W.other) ? W : null;
+      if (same(bare(cur()), bare(sc))) {
+        // 남의 장부: 로봇이 저장 뒤에 돌았는데 화면이 그대로면 바뀐 숫자가 없는 것
+        if (mineW && other && mineW.after && g.ran > mineW.after) { stopWait(); redrawHome(); }
+        return;
+      }
+      if (mineW && awaited(mineW, sc)) stopWait();   // 저장 전에 만든 화면이 늦게 온 것이면 바꾸기만 하고 계속 기다린다
+      applyScreen(sc);
+      toast(S.wait ? '화면이 바뀌었어요 · 저장한 것은 아직 반영 중' : '새 화면이 왔어요');
+    }).catch(function () { S.looking = false; });
+  }
+  /** 받은 화면으로 바꾼다: 보던 자리 그대로, 바뀐 숫자만 굴린다 (처음 열 때처럼 맨 위로 가거나 다시 등장하지 않게) */
+  function applyScreen(sc) {
+    if (S.other) { S.other.screen = sc; redrawHome(); return; }
+    save('screen', sc);
+    S.newer = false;
+    var was = S.screen;
+    S.screen = sc;
+    if (S.tab !== 'home') return;   // 다른 탭이면 홈으로 올 때 새 화면
+    S.before = was;
+    redrawHome();
+    S.moment = pickMoment(sc);
+    if (S.moment) renderOverlays();
+    rememberMoments(sc);
   }
 
   function show(sc, before) {
@@ -1400,13 +1496,26 @@
     root.addEventListener('click', onClick);
     // 새 링크(# 뒤 열쇠)로 바꿔 열면 처음부터 다시 (같은 페이지라 저절로는 안 다시 읽는다)
     window.addEventListener('hashchange', function () { location.reload(); });
+    // 다른 앱(증권사 앱 등)에 갔다 돌아오면 새 화면을 한 번 살핀다 (1분에 한 번까지)
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden || !cur() || Date.now() - (S.lookAt || 0) < 60000) return;
+      refresh();
+      if (!S.other) checkLatest(S.screen);
+    });
+    // 아이폰 키보드가 내려가면 밀린 화면을 제자리로 (입력 칸에서 손을 뗄 때 · 키보드가 다 내려가 보이는 높이가 바뀔 때)
+    document.addEventListener('focusout', function () { setTimeout(unshift, 60); });
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', function () { if (window.visualViewport.scale <= 1.01) setTimeout(unshift, 60); });   // 두 손가락으로 확대한 때는 그대로
     // 새 링크(#k=)면 지난 링크의 화면·폰 등록을 먼저 버린다 — 옛 사람의 주문표가 잠깐이라도 보이지 않게 (10/26 검토 AI)
     if (!testQ('sample') && !testQ('src')) viewKey();
     var cached = testQ('sample') ? null : load('screen');
     if (cached) show(cached, null);
+    var w = load('wait');   // 저장하고 앱을 껐다 켰으면 이어서 기다린다
+    if (cached && w && w.until > Date.now()) { S.wait = { until: Math.min(w.until, Date.now() + WAIT.FOR_MS), other: null, d: w.d || '', after: Number(w.after) || 0, n: 0 }; S.waitT = setInterval(lookAgain, WAIT.EVERY_MS); redrawHome(); }
+    else if (w) save('wait', null);
     source().then(function (got) {
       if (!got) { if (!cached) bootMsg('보기 링크로 열어 주세요.'); return; }
       var sc = got.screen;
+      if (S.wait && !S.wait.other && awaited(S.wait, sc)) { stopWait(); redrawHome(); }   // 저장 뒤 로봇이 만든 화면이 벌써 왔다
       checkLatest(sc);
       if (cached && same(cached, sc)) {
         // 화면은 그대로지만 등록 안 된 폰이면 PIN을 묻는다

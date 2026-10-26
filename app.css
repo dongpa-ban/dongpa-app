@@ -1,5 +1,5 @@
 /* 동파앱 화면 — 10/23 확정 시안(철검) 그대로. 시안: 시험/3단계/시안/V2.dc.html */
-@font-face{font-family:"PretendardDong";src:url("font/pretendard-dong.woff2?v=3a59e0c-6") format("woff2");font-weight:45 920;font-display:swap}
+@font-face{font-family:"PretendardDong";src:url("font/pretendard-dong.woff2?v=74b650c-7") format("woff2");font-weight:45 920;font-display:swap}
 :root{color-scheme:dark;--bg:#000;--card:#111113;--nested:#1e1e20;--buy:#ff4a5a;--sell:#4c94ff;--buyt:#ff6b78;--sellt:#6aa8ff;--aggr:#ff9b9b;--safe:#8fb4ff;--top:env(safe-area-inset-top,0px);--bot:env(safe-area-inset-bottom,0px)}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:#000;color:#fff;overscroll-behavior:none}
@@ -285,7 +285,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .pmsg{min-height:20px;font-size:13px;line-height:19px;color:#ffb35c}
 .pmsg.ok{color:#8fe6d8}
 .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-.toast{position:fixed;left:16px;right:16px;top:calc(58px + var(--top));z-index:10;max-width:448px;margin:0 auto;border-radius:18px;padding:13px 16px;font-size:14px;font-weight:600;animation:rise 300ms cubic-bezier(.23,1,.32,1) both}
+.toast{pointer-events:none;position:fixed;left:16px;right:16px;top:calc(58px + var(--top));z-index:10;max-width:448px;margin:0 auto;border-radius:18px;padding:13px 16px;font-size:14px;font-weight:600;animation:rise 300ms cubic-bezier(.23,1,.32,1) both}
 @media (prefers-reduced-motion: reduce){.sheet,.scrim,.toast{animation:fade 140ms linear both}}
 /* ④ 입금 · 장부 수정 창 */
 .sheet.tall{max-height:calc(92vh - var(--top));display:flex;flex-direction:column;padding-bottom:0}
