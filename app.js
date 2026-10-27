@@ -23,7 +23,7 @@
   if (window.navigator.standalone === true) document.documentElement.classList.add('iosapp');
   var Q = new URLSearchParams(location.search);
   var KEY = 'dongpa.v1.';
-  var APP_VERSION = '6cedf61-15';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
+  var APP_VERSION = '1f0139c-16';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
   // 시험 도우미(?sample·?src·?now·?moment·?tab·?every)는 저장소 판에서만. 배포된 앱에서는 무시한다 — 누가 ?src=로 가짜 주문표를 띄우는 링크를 못 만들게 (10/26 검토 AI)
   var DEV = APP_VERSION === 'dev';
   function testQ(k) { return DEV ? Q.get(k) : null; }
@@ -95,12 +95,14 @@
     late_orders: '로봇이 개장 뒤에야 돌아 주문을 ‘안 냄’으로 적었어요',
     publish_failed: '잠근 화면을 공개 저장소에 못 올렸어요(다음 실행에 다시)'
   };
+  var DATED = { cash_negative: 1, bc_floor: 1, bc_now_ignored: 1, manual_sell_skipped: 1, sell_skipped: 1, split_applied: 1, split_fraction: 1 };
   function alertText(a) {
     if (a.kind === 'token_expiring') return '깃허브 열쇠 만료까지 ' + a.daysLeft + '일';
     if (a.kind === 'quote_changed') return (a.symbol || '') + ' ' + C.md(a.date) + ' 종가가 바뀌었어요 (' + C.price(a.from) + ' → ' + C.price(a.to) + ')';
     if (a.kind === 'late_orders') return KIND.late_orders + ' (' + C.mdw(a.session) + ' · ' + a.count + '건)';
     var t = KIND[a.kind] || ('알림: ' + a.kind);
     if (a.symbol) t = a.symbol + ' ' + t;
+    if (a.session && DATED[a.kind]) t = C.md(a.session) + ' ' + t;   // 그날 생긴 경고 (홈에는 최근 것만 — 로봇 robotStep)
     var d = a.detail || a.reason || '';
     return d ? t + ' · ' + d : t;
   }
@@ -151,11 +153,11 @@
     }
     var dd = !buy && o.dday !== null && o.dday !== undefined ? (o.dday === 0 ? 'D-Day' : 'D-' + o.dday) : '';
     return '<div class="tk ' + (buy ? 'buy' : 'sell') + (fixed ? ' tkfix' : '') + '" style="animation-delay:' + (50 * k) + 'ms">' +
-      '<div class="tkrow"><span class="tkside">' + o.side + '</span><span class="tktype">' + esc(o.type) + '</span>' +
+      '<div class="tkrow"><span class="tkside">' + esc(o.side) + '</span><span class="tktype">' + esc(o.type) + '</span>' +
       '<span class="n tklot">' + (buy ? '새 Lot' : esc(o.lotId)) + '</span>' + (dd ? '<span class="tkd n">' + dd + '</span>' : '') + '</div>' +
       '<div class="tkrow2"><span class="n tkprice' + (fixed && old.price !== o.price ? ' flash' : '') + '">' +
       (fixed && old.price !== o.price ? digits(C.price(old.price), p, 'h38') : esc(p)) + '</span>' +
-      '<span class="n tkqty">× ' + o.qty + '주</span>' + (S.other ? '<span class="tkwho">(' + esc(S.other.name) + ')</span>' : '') + '</div>' +
+      '<span class="n tkqty">× ' + esc(o.qty) + '주</span>' + (S.other ? '<span class="tkwho">(' + esc(S.other.name) + ')</span>' : '') + '</div>' +
       '<div class="tksub n"><span>' + esc(sub) + '</span>' +
       (fixed ? '<span class="pill yel">바뀜 · 전 ' + (old.price !== o.price ? C.price(old.price) : old.qty + '주') + '</span>' : '') + '</div></div>';
   }
@@ -212,7 +214,7 @@
     }
     var mode = nx.mode;
     return '<section class="card hero" id="tonight"><div class="ch"><h2 class="ct">오늘 밤 주문</h2>' +
-      (mode ? '<span class="modepill ' + mode + '">' + modeIcon(mode) + C.modeName(mode) + ' 모드</span>' : '') + '</div>' +
+      (mode === 'safe' || mode === 'aggressive' ? '<span class="modepill ' + mode + '">' + modeIcon(mode) + C.modeName(mode) + ' 모드</span>' : '') + '</div>' +
       '<div class="when"><span class="n">' + C.mdw(nx.session) + '</span> 밤 · <span class="n">' + esc(when) + '</span></div>' +
       (stale ? '<div class="alert al-org rise in-card" role="alert"><div class="al-head">이 주문으로 주문하지 마세요</div>이 주문표는 ' + C.mdw(nx.session) +
         '용이에요. 로봇이 ' + C.span(now() - sc.at) + '째 새 화면을 못 만들었어요.</div>' : '') +
@@ -259,9 +261,9 @@
       var amt = '—', amtCls = 'mute';
       if (ok && o.side === 'SELL' && r.pnl !== undefined) { pnl += r.pnl; amt = C.usd(r.pnl, true); amtCls = r.pnl >= 0 ? 'up' : 'down'; }
       else if (ok && o.side === 'BUY') { amt = C.money(-Math.round(r.price * r.qty * 100)); amtCls = 'ink'; }
-      var res = !r ? '판정 전' : ok ? '체결 @' + C.price(r.price) + (r.qty !== o.qty ? ' · ' + r.qty + '주' : '') : '미체결';
-      return '<div class="lrow"><span class="side ' + (o.side === 'BUY' ? 'sbuy' : 'ssell') + '">' + o.side + '</span>' +
-        '<div class="lmid"><div class="n l1">' + esc(lot) + '</div><div class="n sub">' + esc(o.type) + ' ' + (o.price === null ? '시장가' : C.price(o.price)) + ' × ' + o.qty + '주</div></div>' +
+      var res = o.notPlaced ? '안 냄' : !r ? '판정 전' : (ok ? '체결 @' + C.price(r.price) + (r.qty !== o.qty ? ' · ' + esc(r.qty) + '주' : '') : '미체결') + (r.manual ? ' (고침)' : '');
+      return '<div class="lrow"><span class="side ' + (o.side === 'BUY' ? 'sbuy' : 'ssell') + '">' + esc(o.side) + '</span>' +
+        '<div class="lmid"><div class="n l1">' + esc(lot) + '</div><div class="n sub">' + esc(o.type) + ' ' + (o.price === null ? '시장가' : C.price(o.price)) + ' × ' + esc(o.qty) + '주</div></div>' +
         '<div class="lrt"><div class="n lamt ' + amtCls + '">' + amt + '</div><div class="res">' +
         (ok ? CHECK.replace('<path ', '<path style="animation-delay:' + (160 + 60 * k) + 'ms" ') : '') + '<span class="n">' + res + '</span></div></div></div>';
     });
@@ -277,14 +279,17 @@
   function compareCard(sc) {
     var h = sc.holdings;
     if (!h) return '';
-    var cash = C.money(h.cashCents);
+    // 증권사 달러 잔고 = 장부 현금 + 아직 BC에 안 들어간 입금 (10/27 형님 — 증권사에는 입금한 날부터 있다)
+    var bal = function (x) { return x.cashCents + (x.pendingCents || 0); };
+    var cash = C.money(bal(h));
     var b = !S.other && S.before && S.before.holdings;   // 남의 장부는 굴리지 않는다 (oldOrder처럼)
-    var oldCash = b && b.cashCents !== h.cashCents ? C.money(b.cashCents) : null;
+    var oldCash = b && bal(b) !== bal(h) ? C.money(bal(b)) : null;
     var fx = sc.fx, bc = sc.bc, bv = sc.view && sc.view.bc;
     return '<section class="card"><div class="ch"><h2 class="ct">증권사 앱과 비교</h2><span class="meta">둘이 같으면 끝</span></div>' +
       '<div class="cmp"><div><div class="meta">보유 수량</div><div class="n big">' + h.qty + '<span class="unit">주</span></div></div>' +
       '<div><div class="meta">달러 잔고</div><div class="n big' + (oldCash ? ' flash' : '') + '">' + (oldCash ? digits(oldCash, cash, 'h32') : esc(cash)) + '</div>' +
-      (fx ? '<div class="krw n">' + C.krwApprox(h.cashCents, fx.rate) + '</div>' : '') + '</div></div>' +
+      (fx ? '<div class="krw n">' + C.krwApprox(bal(h), fx.rate) + '</div>' : '') + '</div></div>' +
+      (h.pendingCents ? '<div class="fx n">입금 대기 ' + C.money(h.pendingCents) + ' 포함 · 다음 BC 때 장부 현금에 들어가요</div>' : '') +
       // 환율: 로봇이 세션마다 미국 장 마감 뒤 한 번 받아 둔 값 (어젯밤 실현손익 원화와 같은 값)
       (fx ? '<div class="fx n">환율 ' + fx.rate.toLocaleString('en-US', { minimumFractionDigits: 2 }) + '원 · ' + (fx.date ? C.md(fx.date) + ' 장 마감 뒤' : C.kstWhen(fx.at, now())) + ' 기준 · 보기용(계산엔 안 씀)</div>' : '') +
       (bc ? '<div class="bcline n">BC <span style="color:#fff">' + C.money(bc.cents) + '</span>' +
@@ -376,7 +381,7 @@
     var os = tonightOrders(sc);
     if (!os.length) return '';
     return '<div class="sumwrap" id="sumwrap"><button class="sumbtn glass press" data-act="top" aria-label="맨 위 오늘 밤 주문으로"><span>오늘 밤</span>' +
-      os.map(function (o) { return '<span class="n ' + (o.side === 'BUY' ? 'sb' : 'ss') + '">' + o.side.charAt(0) + ' ' + (o.price === null ? '시장가' : C.price(o.price)) + '×' + o.qty + '</span>'; }).join('') + '</button></div>';
+      os.map(function (o) { return '<span class="n ' + (o.side === 'BUY' ? 'sb' : 'ss') + '">' + esc(String(o.side).charAt(0)) + ' ' + (o.price === null ? '시장가' : C.price(o.price)) + '×' + esc(o.qty) + '</span>'; }).join('') + '</button></div>';
   }
 
   /* ── 모드 ─────────────────────────────────────────────── */
@@ -392,7 +397,7 @@
     var v = sc.view && sc.view.mode, params = sc.view && sc.view.params;
     var head = '<div class="hd"><div class="brand">' + MARK + '<span>동파앱</span></div><div class="hdr">' + freshHtml(sc) + '</div></div>';
     if (!v || !params) return head + '<div class="scroll"><div class="wrap"><div class="titlerow"><h1 class="h1">모드</h1></div><section class="card"><p class="later">모드 값이 아직 없어요. 로봇이 다음에 돌면 보여요.</p></section></div></div>';
-    var m = v.mode, other = m === 'safe' ? 'aggressive' : 'safe';
+    var m = v.mode === 'safe' ? 'safe' : 'aggressive', other = m === 'safe' ? 'aggressive' : 'safe';   // 정해진 값만 (글이 그대로 들어가지 않게)
     var hist = v.history || [], prov = v.provisional;
     var prevMode = hist.length >= 2 ? hist[hist.length - 2].nextMode : m;
     var dec = C.decideModeRule(v.rr, v.r, prevMode);
@@ -528,7 +533,7 @@
       var md = l.mode === 'aggressive' ? 'aggressive' : 'safe';   // 클래스 이름에 그대로 넣지 않게 (엔진 normalizeLotMode처럼 둘 중 하나)
       var o = sellOf(sc, l.lotId), p = params[md] || {}, lp = close ? (close - l.entry) * l.qty : null;
       var isMoc = o && o.type === 'MOC';
-      var sell = o ? '<div class="lsell"><span>' + (sc.next ? C.mdw(sc.next.session) + ' 밤' : '오늘 밤') + '</span><span class="sp n">' + (isMoc ? 'MOC' : 'LOC $' + C.price(o.price)) + ' × ' + o.qty + '주</span>' +
+      var sell = o ? '<div class="lsell"><span>' + (sc.next ? C.mdw(sc.next.session) + ' 밤' : '오늘 밤') + '</span><span class="sp n">' + (isMoc ? 'MOC' : 'LOC $' + C.price(o.price)) + ' × ' + esc(o.qty) + '주</span>' +
         (o.dday !== null && o.dday !== undefined ? '<span class="tkd n">D-' + o.dday + '</span>' : '') + '</div>' : '<div class="lsell"><span>' + (sc.next ? C.mdw(sc.next.session) + ' 밤 SELL 없음' : '오늘 밤 주문을 아직 몰라요 (홈을 봐 주세요)') + '</span></div>';
       var bar = '';
       if (o && p.hold && o.dday !== null && o.dday !== undefined) {
@@ -606,7 +611,7 @@
   function momentHtml(sc, kind) {
     var v = sc.view || {}, params = v.params || {};
     if (kind === 'mode' && v.mode) {
-      var m = v.mode.mode, p = params[m];
+      var m = v.mode.mode === 'safe' ? 'safe' : 'aggressive', p = params[m];   // 정해진 값만 (글이 그대로 들어가지 않게)
       return '<div class="moment" id="moment"><button class="momscrim" data-act="moment" aria-label="닫기"></button>' +
         '<div class="mcard mv' + m + '" role="dialog" aria-modal="true" aria-label="이번 주 모드">' +
         '<div class="mlabel">이번 주 모드 · ' + (sc.next ? C.mdw(sc.next.session) + ' 주문부터' : '') + '</div>' +
@@ -859,10 +864,11 @@
     if (!f || !S.pin || S.pin.busy) return;
     var pin = f.value.replace(/\D/g, '');
     if (pin.length !== 6) { pinMsg('PIN은 숫자 6자리예요'); return; }
+    if (!S.reg) { pinMsg('링크를 아직 확인하는 중이에요. 잠시 뒤 다시 눌러 주세요'); return; }
     S.pin.busy = true;
     go.disabled = true; go.textContent = '확인 중…';
     pinMsg('');
-    windowCall({ a: 'register', f: S.fid, pin: pin }).then(function (r) {
+    windowCall({ a: 'register', g: S.reg, pin: pin }).then(function (r) {
       if (r.ok && r.phone) {
         save('phoneKey', r.phone);
         S.pin = null;
@@ -1130,10 +1136,10 @@
       return '<div class="och">' + C.mdw(d) + ' 밤' + (d === L.N ? ' · 오늘 밤' : d === L.P ? ' · 어젯밤' : '') + '</div>' +
         by[d].slice().sort(function (a, b) { return (a.side === 'BUY' ? 0 : 1) - (b.side === 'BUY' ? 0 : 1); }).map(function (o) {
           var on = o.id === cur, r = o.result;
-          var res = !r ? '판정 전' : r.status === 'filled' ? '체결 $' + C.price(r.price) + (r.qty !== o.qty ? ' × ' + r.qty : '') : '미체결';
+          var res = !r ? '판정 전' : r.status === 'filled' ? '체결 $' + C.price(r.price) + (r.qty !== o.qty ? ' × ' + esc(r.qty) : '') : '미체결';
           return '<button class="oc press' + (on ? ' on' : '') + '" data-act="form-opt" data-k="pick" data-v="' + esc(o.id) + '" aria-pressed="' + on + '">' +
-            '<span class="side ' + (o.side === 'BUY' ? 'sbuy' : 'ssell') + '">' + o.side + '</span>' +
-            '<span class="ocm"><span class="ocl n">' + o.type + (o.price === null ? '' : ' $' + C.price(o.price)) + ' × ' + o.qty + '주</span>' + (o.lotId ? '<span class="ocs n">' + esc(o.lotId) + '</span>' : '') + '</span>' +
+            '<span class="side ' + (o.side === 'BUY' ? 'sbuy' : 'ssell') + '">' + esc(o.side) + '</span>' +
+            '<span class="ocm"><span class="ocl n">' + esc(o.type) + (o.price === null ? '' : ' $' + C.price(o.price)) + ' × ' + esc(o.qty) + '주</span>' + (o.lotId ? '<span class="ocs n">' + esc(o.lotId) + '</span>' : '') + '</span>' +
             '<span class="ocr n' + (r && r.status === 'filled' ? ' ink' : '') + '">' + res + '</span></button>';
         }).join('');
     }).join('');
@@ -1578,6 +1584,10 @@
     var salt = utf8('dongpa-file-v1'), both = new Uint8Array(salt.length + key.length);
     both.set(salt, 0); both.set(key, salt.length);
     var fid;
+    // 폰 등록 값: 링크를 가진 사람만 아는 값 (공개 파일 이름과 다름 — 로봇/RobotPublish.gs registerProof, 4단계 전 검토)
+    var rsalt = utf8('dongpa-reg-v1'), rboth = new Uint8Array(rsalt.length + key.length);
+    rboth.set(rsalt, 0); rboth.set(key, rsalt.length);
+    subtle.digest('SHA-256', rboth).then(function (h) { S.reg = b64uOf(new Uint8Array(h)).slice(0, 22); });
     return subtle.digest('SHA-256', both).then(function (h) {
       fid = b64uOf(new Uint8Array(h)).slice(0, 22);
       S.fid = fid;
