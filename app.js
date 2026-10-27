@@ -23,7 +23,7 @@
   if (window.navigator.standalone === true) document.documentElement.classList.add('iosapp');
   var Q = new URLSearchParams(location.search);
   var KEY = 'dongpa.v1.';
-  var APP_VERSION = '0d8684f-13';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
+  var APP_VERSION = '4c57942-14';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
   // 시험 도우미(?sample·?src·?now·?moment·?tab·?every)는 저장소 판에서만. 배포된 앱에서는 무시한다 — 누가 ?src=로 가짜 주문표를 띄우는 링크를 못 만들게 (10/26 검토 AI)
   var DEV = APP_VERSION === 'dev';
   function testQ(k) { return DEV ? Q.get(k) : null; }
@@ -709,7 +709,8 @@
   }
   function renderOverlays() {
     var ad = document.querySelector('#adminl .scroll'), adTop = ad ? ad.scrollTop : 0;
-    var hp = document.querySelector('#helpl .scroll'), hpTop = hp ? hp.scrollTop : 0;   // 도움말도   // 관리 화면을 다시 그려도 보던 자리 그대로
+    var hp = document.querySelector('#helpl .scroll'), hpTop = hp ? hp.scrollTop : 0;   // 도움말도
+    var fs = document.querySelector('#formwrap .sheetin'), fsAt = fs && S.form ? { type: S.form.type, top: fs.scrollTop } : null;   // 장부 수정 창도 (주문 카드를 눌러 다시 그릴 때)   // 관리 화면을 다시 그려도 보던 자리 그대로
     // 키보드가 떠 있는 채로 입력 칸을 지우면 아이폰이 화면을 밀린 채로 둔다 (10/26 형님 폰 — 단추가 안 눌림). 아이폰은 지울 때 손 떼기(blur)를 안 알려 줘서 먼저 놓는다
     // 창을 닫을 때도, 창이 그대로 다시 그려질 때(옵션 단추·목록 고르기)도
     var shut = document.activeElement && document.activeElement.closest && document.activeElement.closest('#menuwrap,#pinwrap,#formwrap,#sheetwrap,#adminl,#helpl');
@@ -733,7 +734,13 @@
     if (S.help) { renderHelp(); var hp2 = document.querySelector('#helpl .scroll'); if (hp2) hp2.scrollTop = hpTop; }
     if (S.adminOpen) { renderAdmin(); var ad2 = document.querySelector('#adminl .scroll'); if (ad2) ad2.scrollTop = adTop; }
     if (S.pin) renderPin();
-    else if (S.form) renderForm();
+    else if (S.form) {
+      renderForm();
+      // 이미 떠 있던 창을 다시 그릴 때는 아래에서 떠오르는 움직임을 다시 하지 않는다 (카드·단추를 누를 때마다 깜빡이지 않게)
+      if (fsAt) document.getElementById('formwrap').classList.add('still');
+      var fs2 = document.querySelector('#formwrap .sheetin');
+      if (fs2 && fsAt && fsAt.type === S.form.type) fs2.scrollTop = fsAt.top;
+    }
     else if (S.sheet) renderSheet();
     if (S.moment) {
       var w = document.createElement('div');
@@ -789,9 +796,10 @@
     else if (act === 'help-close') { S.help = null; renderOverlays(); }
     else if (act === 'help-tab') { S.help.tab = t.getAttribute('data-v'); renderOverlays(); var hs = document.querySelector('#helpl .scroll'); if (hs) hs.scrollTop = 0; }
     else if (act === 'form-close') { S.form = null; renderOverlays(); }
-    else if (act === 'form-pick') { S.form.type = t.getAttribute('data-type'); S.form.fields = defaultsFor(S.form.type); S.form.pv = null; renderOverlays(); schedulePreview(); }
+    else if (act === 'form-pick') { S.form.type = t.getAttribute('data-type'); S.form.fields = defaultsFor(S.form.type); S.form.pv = null; S.form.moreOrders = false; renderOverlays(); schedulePreview(); }
     else if (act === 'form-back') { S.form.type = null; S.form.pv = null; S.form.miss = null; renderOverlays(); }
-    else if (act === 'form-opt') { S.form.fields[t.getAttribute('data-k')] = t.getAttribute('data-v'); if (S.form.pv) S.form.pv.stale = true; renderOverlays(); schedulePreview(); }
+    else if (act === 'form-opt') { var fk = t.getAttribute('data-k'); S.form.fields[fk] = t.getAttribute('data-v'); if (fk === 'pick') pickChanged(S.form.fields.pick); if (S.form.pv) S.form.pv.stale = true; renderOverlays(); schedulePreview(); }
+    else if (act === 'form-more') { S.form.moreOrders = true; renderOverlays(); }
     else if (act === 'form-save') saveForm();
     else if (act === 'placed') markPlaced(t);
     else if (act === 'check') decideCheck(t);
@@ -878,15 +886,16 @@
   }
   /* ── ④ 입금 · 장부 수정 (창구: 로봇/RobotInput.gs) ─────────────────
    * 폰은 고르고 숫자만 넣는다. 창구가 로봇과 같은 계산으로 미리보기를 주고, 저장 때 다시 계산해 같아야 저장한다. */
+  // 10/27 형님: 많이 쓰는 주문 안 냄 · 수동 매수 입력 · 수동 매도 입력을 맨 위로
   var EDIT_ITEMS = [
+    ['not_placed', '주문 안 냄', '깜빡했거나 증권사가 거절'],
+    ['manual_buy', '수동 매수 입력', '직접 샀을 때 (깜빡해서 지정가로 산 것 등)'],
+    ['manual_sell', '수동 매도 입력', '직접 팔았을 때'],
     ['cash_adjust', '현금만 입금·출금', '현금 여유분만. 주문 크기(BC)는 그대로'],
     ['cash_set', '현금 = $X', '증권사 잔고와 맞출 때. 그날의 잔고를 값으로'],
     ['withdraw', '영구 출금', '현금과 BC에서 바로 뺌'],
     ['bc_now', 'BC 지금 갱신', '10거래일 전에 일찍'],
-    ['not_placed', '주문 안 냄', '깜빡했거나 증권사가 거절'],
     ['fill_differs', '체결이 달랐음', '체결가·수량이 다를 때'],
-    ['manual_buy', '수동 매수 입력', '직접 샀을 때 (깜빡해서 지정가로 산 것 등)'],
-    ['manual_sell', '수동 매도 입력', '직접 팔았을 때'],
     ['cancel_event', '예외 취소', '잘못 넣은 입력 되돌리기']
   ];
   // ⑥d 시장 전체 (관리자 자기 장부에서만 — 창구가 관리자 장부 목록에만 market을 붙인다)
@@ -1107,9 +1116,39 @@
     L.orders.forEach(function (o) { if (o.session <= max && (!L.start || o.session > L.start)) set[o.session] = true; });
     return Object.keys(set).sort().reverse().map(function (d) { return [d, C.mdw(d) + (d === L.P ? ' · 어젯밤' : '')]; });
   }
-  function orderLabel(o) {
-    var r = o.result ? (o.result.status === 'filled' ? ' · 체결 @' + C.price(o.result.price) : ' · 미체결') : ' · 판정 전';
-    return C.mdw(o.session) + ' ' + o.side + (o.lotId ? ' ' + o.lotId : '') + ' ' + o.type + ' ' + (o.price === null ? '시장가' : C.price(o.price)) + '×' + o.qty + r;
+  /**
+   * 주문 고르기 (10/27 형님: 바퀴 대신 카드). 세션별로 묶어 최근 것부터, 처음엔 최근 3세션만 — 오래된 주문을 잘못 고르면 장부가 크게 바뀐다.
+   * 고른 주문은 #ff-pick의 data-pick. 카드를 누르면 form-opt(k=pick)
+   */
+  function orderCards(label, list) {
+    var F = S.form, L = F.lists, cur = F.fields.pick || '', by = {}, days = [];
+    list.forEach(function (o) { if (!by[o.session]) { by[o.session] = []; days.push(o.session); } by[o.session].push(o); });
+    days.sort().reverse();
+    var curDay = (list.filter(function (o) { return o.id === cur; })[0] || {}).session;
+    var all = F.moreOrders || (curDay && days.indexOf(curDay) >= 3), shown = all ? days : days.slice(0, 3);
+    var body = shown.map(function (d) {
+      return '<div class="och">' + C.mdw(d) + ' 밤' + (d === L.N ? ' · 오늘 밤' : d === L.P ? ' · 어젯밤' : '') + '</div>' +
+        by[d].slice().sort(function (a, b) { return (a.side === 'BUY' ? 0 : 1) - (b.side === 'BUY' ? 0 : 1); }).map(function (o) {
+          var on = o.id === cur, r = o.result;
+          var res = !r ? '판정 전' : r.status === 'filled' ? '체결 $' + C.price(r.price) + (r.qty !== o.qty ? ' × ' + r.qty : '') : '미체결';
+          return '<button class="oc press' + (on ? ' on' : '') + '" data-act="form-opt" data-k="pick" data-v="' + esc(o.id) + '" aria-pressed="' + on + '">' +
+            '<span class="side ' + (o.side === 'BUY' ? 'sbuy' : 'ssell') + '">' + o.side + '</span>' +
+            '<span class="ocm"><span class="ocl n">' + o.type + (o.price === null ? '' : ' $' + C.price(o.price)) + ' × ' + o.qty + '주</span>' + (o.lotId ? '<span class="ocs n">' + esc(o.lotId) + '</span>' : '') + '</span>' +
+            '<span class="ocr n' + (r && r.status === 'filled' ? ' ink' : '') + '">' + res + '</span></button>';
+        }).join('');
+    }).join('');
+    var more = !all && days.length > 3 ? '<button class="btn ghost2 wide press" data-act="form-more">더 이전 주문 보기 (' + (days.length - 3) + '세션)</button>' : '';
+    return '<div><div class="flabel">' + label + (cur ? '' : ' — 하나를 눌러 골라 주세요') + '</div><div class="oclist" id="ff-pick" data-pick="' + esc(cur) + '">' +
+      (list.length ? body : '<p class="sp">고를 주문이 없어요.</p>') + '</div>' + more + '</div>';
+  }
+  /** 주문·Lot을 고르면: '못 찾음' 글은 빼고, 체결이 달랐음이면 체결 칸을 그 주문 값으로 채워 둔다 */
+  function pickChanged(v) {
+    var F = S.form;
+    F.miss = null;
+    if (F.type === 'fill_differs' && F.lists) {
+      var o = F.lists.orders.filter(function (x) { return x.id === v; })[0];
+      if (o && o.result) { F.fields.price = o.result.status === 'filled' ? C.price(o.result.price) : ''; F.fields.qty = String(o.result.qty); }
+    }
   }
   function formBody() {
     var F = S.form, t = F.type, L = F.lists, f = F.fields;
@@ -1121,8 +1160,9 @@
     if (t === 'withdraw') return field('amount', '금액 (달러)', 'inputmode="decimal"');
     if (t === 'bc_now') return '<p class="sp">지난 BC 뒤 실현손익으로 BC를 지금 갱신해요. 아래 미리보기에서 새 BC를 확인하세요.</p>';
     if (t === 'cash_set') return select('session', '그날 (그날 체결을 다 반영한 뒤의 잔고)', sessionsList()) + field('amount', '증권사 달러 잔고', 'inputmode="decimal"');
-    if (t === 'not_placed') return select('pick', '안 낸 주문', L.orders.filter(function (o) { return !o.result || o.result.status; }).map(function (o) { return [o.id, orderLabel(o)]; }), '주문을 골라 주세요');
-    if (t === 'fill_differs') return select('pick', '주문', L.orders.filter(function (o) { return o.result; }).map(function (o) { return [o.id, orderLabel(o)]; }), '주문을 골라 주세요') +
+    // 미체결 주문은 빼고 보여 준다: 안 냄으로 해도 바뀌는 것이 없다 (10/27 형님). 판정 전(오늘 밤)과 체결된 것만
+    if (t === 'not_placed') return orderCards('안 낸 주문', L.orders.filter(function (o) { return !o.result || o.result.status === 'filled'; }));
+    if (t === 'fill_differs') return orderCards('주문', L.orders.filter(function (o) { return o.result; })) +
       '<div class="two">' + field('price', '실제 체결가', 'inputmode="decimal"') + field('qty', '실제 수량 (안 됐으면 0)', 'inputmode="numeric"') + '</div>';
     if (t === 'manual_buy') return select('session', '산 날 (미국 세션)', sessionsList()) + '<div class="two">' + field('price', '매수가', 'inputmode="decimal"') + field('qty', '수량', 'inputmode="numeric"') + '</div>' +
       '<div><div class="flabel">Lot 모드</div>' + opts('mode', [['safe', '안전', ''], ['aggressive', '공세', '']]) + '</div>';
@@ -1166,12 +1206,7 @@
     if (!k || !S.form) return;
     if (S.form.fields[k] === e.target.value) return;   // 칸에서 손을 뗄 때(change) 같은 값이면 다시 계산하지 않는다 — 저장 단추를 누르는 순간 막히지 않게
     S.form.fields[k] = e.target.value;
-    if (k === 'pick' && S.form.miss) { S.form.miss = null; var mw = document.querySelector('#formwrap .sheetin > .prev.warn'); if (mw) mw.parentNode.removeChild(mw); }   // 사람이 골랐으면 '못 찾음' 글은 뺀다
-    // 날짜·주문을 고르면 체결 칸을 그 주문 값으로 채워 둔다
-    if (k === 'pick' && S.form.type === 'fill_differs' && S.form.lists) {
-      var o = S.form.lists.orders.filter(function (x) { return x.id === e.target.value; })[0];
-      if (o && o.result) { S.form.fields.price = o.result.status === 'filled' ? C.price(o.result.price) : ''; S.form.fields.qty = String(o.result.qty); renderOverlays(); }
-    }
+    if (k === 'pick') { var had = !!S.form.miss; pickChanged(e.target.value); if (had || S.form.type === 'fill_differs') renderOverlays(); }   // 사람이 골랐으면 '못 찾음' 글은 빼고 다시 그림
     schedulePreview();
   }
 
