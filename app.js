@@ -23,7 +23,7 @@
   if (window.navigator.standalone === true) document.documentElement.classList.add('iosapp');
   var Q = new URLSearchParams(location.search);
   var KEY = 'dongpa.v1.';
-  var APP_VERSION = '7771f94-12';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
+  var APP_VERSION = '0d8684f-13';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
   // 시험 도우미(?sample·?src·?now·?moment·?tab·?every)는 저장소 판에서만. 배포된 앱에서는 무시한다 — 누가 ?src=로 가짜 주문표를 띄우는 링크를 못 만들게 (10/26 검토 AI)
   var DEV = APP_VERSION === 'dev';
   function testQ(k) { return DEV ? Q.get(k) : null; }
@@ -1367,7 +1367,7 @@
         '<div class="when2"><span class="wt">참고 · 동파법 규칙</span><span class="wd">BUY를 깜빡했으면 알아챈 <b>그날 아침에라도 지정가로</b> 사요.</span></div>' +
         T('<b>지정가로 샀으면</b> 이렇게 적어요.') +
         steps(['어젯밤 결과에 그 BUY가 <b>‘체결’</b>로 나와 있으면 ' + PATH('장부 수정') + ' → ' + PATH('주문 안 냄') + ' → 그 BUY. 앱이 산 것으로 적어 둔 것을 지워요. ‘미체결’이면 건너뛰어요.',
-          PATH('장부 수정') + ' → ' + PATH('수동 매수 입력') + ' → 산 날(증권사 체결 내역의 날짜) · 실제 체결가 · 수량 · 모드(깜빡한 주문의 모드).',
+          PATH('장부 수정') + ' → ' + PATH('수동 매수 입력') + ' → 산 날 · 실제 체결가 · 수량 · 모드. <b>산 날과 모드는 깜빡한 BUY 것 그대로</b> 골라요(그 주문의 미국 날짜 — 보통 맨 위에 골라져 있는 ‘어젯밤’).',
           '미리보기를 보고 <b>저장</b>.']) +
         T('<b>안 샀으면</b> ' + PATH('주문 안 냄') + '만 넣어요. SELL도 같아요. <b>일부만</b> 못 넣었으면 그 주문만 골라요.') +
         '<p class="hsmall">안 고치면 앱은 종가대로 ‘체결’로 적어서, 증권사와 숫자가 달라져요.</p>', true) +
