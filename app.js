@@ -23,7 +23,7 @@
   if (window.navigator.standalone === true) document.documentElement.classList.add('iosapp');
   var Q = new URLSearchParams(location.search);
   var KEY = 'dongpa.v1.';
-  var APP_VERSION = '4c57942-14';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
+  var APP_VERSION = '6cedf61-15';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
   // 시험 도우미(?sample·?src·?now·?moment·?tab·?every)는 저장소 판에서만. 배포된 앱에서는 무시한다 — 누가 ?src=로 가짜 주문표를 띄우는 링크를 못 만들게 (10/26 검토 AI)
   var DEV = APP_VERSION === 'dev';
   function testQ(k) { return DEV ? Q.get(k) : null; }
@@ -1137,7 +1137,7 @@
             '<span class="ocr n' + (r && r.status === 'filled' ? ' ink' : '') + '">' + res + '</span></button>';
         }).join('');
     }).join('');
-    var more = !all && days.length > 3 ? '<button class="btn ghost2 wide press" data-act="form-more">더 이전 주문 보기 (' + (days.length - 3) + '세션)</button>' : '';
+    var more = !all && days.length > 3 ? '<button class="btn ghost2 wide press ocmore" data-act="form-more">더 이전 주문 보기 (' + (days.length - 3) + '세션)</button>' : '';
     return '<div><div class="flabel">' + label + (cur ? '' : ' — 하나를 눌러 골라 주세요') + '</div><div class="oclist" id="ff-pick" data-pick="' + esc(cur) + '">' +
       (list.length ? body : '<p class="sp">고를 주문이 없어요.</p>') + '</div>' + more + '</div>';
   }
