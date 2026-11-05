@@ -23,7 +23,7 @@
   if (window.navigator.standalone === true) document.documentElement.classList.add('iosapp');
   var Q = new URLSearchParams(location.search);
   var KEY = 'dongpa.v1.';
-  var APP_VERSION = 'a1f2756-1';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
+  var APP_VERSION = '2ca94aa-2';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
   // 시험 도우미(?sample·?src·?now·?moment·?tab·?every)는 저장소 판에서만. 배포된 앱에서는 무시한다 — 누가 ?src=로 가짜 주문표를 띄우는 링크를 못 만들게 (10/26 검토 AI)
   var DEV = APP_VERSION === 'dev';
   function testQ(k) { return DEV ? Q.get(k) : null; }
@@ -247,9 +247,57 @@
     return '<button class="btn wide ghost2 press" data-act="push-on">21시 알림 켜기</button>';
   }
 
+  /* 자동주문 A: 로봇이 한국 아침에 메리츠 기록과 맞춰 본 결과 (로봇/RobotBroker.gs). 보여 주기만 — 장부는 로봇도 화면도 안 바꾼다 */
+  function brokerOf(sc) {
+    var b = sc.broker, ln = sc.lastNight;
+    return b && ln && b.session === ln.session ? b : null;
+  }
+  function brokerFill(o) { return o.fillQty + '주' + (o.fillPrice !== null && o.fillPrice !== undefined ? ' @' + C.price(o.fillPrice) : ''); }
+  function brokerVerdict(o) {
+    switch (o.verdict) {
+      case 'not_placed': return '증권사에 이 주문이 없어요';
+      case 'rejected': return '증권사가 이 주문을 거부했어요';
+      case 'qty_differs': return '증권사에는 ' + o.placedQty + '주로 들어갔어요';
+      case 'fill_differs': return o.fillQty ? '증권사 체결은 ' + brokerFill(o) : '증권사에서는 체결이 없어요';
+      case 'unexpected_fill': return '증권사에서는 체결됐어요 · ' + brokerFill(o);
+      case 'placed_marked_not': return "'안 냄'인데 증권사에는 " + o.placedQty + '주 들어갔어요';
+      case 'auto_cancelled': return '증권사에서 ' + (o.fillQty ? brokerFill(o) + ' 체결 뒤 ' : '') + '남은 수량이 자동 취소됐어요. 증권사 앱에서 봐 주세요';
+      default: return '증권사와 달라요';
+    }
+  }
+  function brokerLine(b) {
+    var t = b.at ? ' · 한국 <span class="n">' + C.kstHm(b.at) + '</span>' : '';
+    var why = b.why ? '<div class="bkwhy">' + esc(b.why) + '</div>' : '';
+    if (b.status === 'same') return '<div class="bk ok" role="status">' + CHECK + '<div>증권사 기록과 같아요' + t + '</div></div>';
+    if (b.status === 'differs') {
+      return '<div class="bk warn" role="status"><div>증권사와 다른 곳이 있어요' + t + '<br>장부는 그대로예요. 노란 글을 보고, 장부가 틀렸으면 입력으로 고쳐 주세요.' +
+        (b.modified ? '<br>증권사에서 주문을 정정한 기록이 있어요. 증권사 앱에서 직접 봐 주세요.' : '') + '</div></div>';
+    }
+    if (b.status === 'checking') return '<div class="bk" role="status"><div>증권사 기록과 맞춰 보는 중이에요' + t + '부터<br>아침에는 기록이 늦게 들어오기도 해서, 1시간 넘게 다르면 알려 드려요.</div></div>';
+    if (b.status === 'unavailable') return '<div class="bk" role="status"><div>증권사 기록을 아직 못 받았어요. 다시 해 볼게요.' + why + '</div></div>';
+    if (b.status === 'missed') return '<div class="bk warn" role="status"><div>증권사 기록을 끝내 못 받아 이 밤 주문은 맞춰 보지 못했어요. 증권사 앱에서 직접 봐 주세요.' + why + '</div></div>';
+    if (b.status === 'off') return '<div class="bk" role="status"><div>증권사 확인 꺼짐' + why + '</div></div>';
+    return '<div class="bk" role="status"><div>증권사 확인에 문제가 생겼어요. 판정·주문에는 영향 없어요.' + why + '</div></div>';
+  }
+  /* 다를 때 알림(로봇/RobotBroker.gs brokerAlerts)은 21시 알림과 같은 알림 주소로 간다 — [증권사에 넣었어요]를 안 쓰는 사람도 여기서 켠다 */
+  function brokerPushHtml() {
+    if (S.other) return '';
+    var ok = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+    var standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+    if (!ok || !standalone || (load('pushOn') && Notification.permission === 'granted')) return '';
+    return '<div class="bkp"><button class="btn sm ghost2 press" data-act="push-on">증권사와 다를 때 앱 알림 받기</button></div>';
+  }
+  function brokerExtra(e) {
+    return '<div class="lrow"><span class="side ' + (e.side === 'BUY' ? 'sbuy' : 'ssell') + '">' + esc(e.side) + '</span>' +
+      '<div class="lmid"><div class="l1 bkx">장부에 없는 주문</div><div class="n sub">' + esc(e.type) + ' ' + (e.type === 'MOC' ? '시장가' : C.price(e.price)) + ' × ' + esc(e.placedQty) + '주</div></div>' +
+      '<div class="lrt"><div class="res"><span class="n">' + (e.fillQty ? '체결 ' + esc(brokerFill(e)) : '미체결') + '</span></div></div></div>';
+  }
+
   function lastNightCard(sc) {
     var ln = sc.lastNight;
     if (!ln) return '';
+    var bk = brokerOf(sc), bmap = {};
+    if (bk && bk.status === 'differs') (bk.orders || []).forEach(function (x) { if (x.verdict !== 'same') bmap[x.id] = x; });
     var os = (ln.orders || []).slice();
     os.sort(function (a, b) { return (a.side === 'SELL' ? 0 : 1) - (b.side === 'SELL' ? 0 : 1) || String(a.lotId).localeCompare(String(b.lotId)); });
     var filled = 0, missed = 0, pnl = 0;
@@ -265,15 +313,18 @@
       return '<div class="lrow"><span class="side ' + (o.side === 'BUY' ? 'sbuy' : 'ssell') + '">' + esc(o.side) + '</span>' +
         '<div class="lmid"><div class="n l1">' + esc(lot) + '</div><div class="n sub">' + esc(o.type) + ' ' + (o.price === null ? '시장가' : C.price(o.price)) + ' × ' + esc(o.qty) + '주</div></div>' +
         '<div class="lrt"><div class="n lamt ' + amtCls + '">' + amt + '</div><div class="res">' +
-        (ok ? CHECK.replace('<path ', '<path style="animation-delay:' + (160 + 60 * k) + 'ms" ') : '') + '<span class="n">' + res + '</span></div></div></div>';
+        (ok ? CHECK.replace('<path ', '<path style="animation-delay:' + (160 + 60 * k) + 'ms" ') : '') + '<span class="n">' + res + '</span></div></div></div>' +
+        (bmap[o.id] ? '<div class="bknote">' + esc(brokerVerdict(bmap[o.id])) + '</div>' : '');
     });
+    var bkTop = bk ? brokerLine(bk) + brokerPushHtml() : '';
+    var bkEnd = bk && bk.status === 'differs' ? (bk.extra || []).map(brokerExtra).join('') : '';
     return '<section class="card"><div class="ch"><h2 class="ct">어젯밤 결과</h2><span class="meta">' + C.mdw(ln.session) + ' 종가 <span class="n" style="color:#fff">' + C.price(ln.close) + '</span></span></div>' +
       (os.length ? '<div class="sum"><span class="pill up">체결 ' + filled + '</span><span class="pill">미체결 ' + missed + '</span>' +
         '<span class="meta">실현손익 <span class="n ' + (pnl > 0 ? 'up' : pnl < 0 ? 'down' : '') + '">' + C.usd(pnl, true) + '</span></span></div>' +
         // 원화로도: 그날 환율 (로봇이 날짜별로 적어 둔 야후 원/달러 — 보여 주기만, 증권사 환율과 몇 원 다를 수 있음)
         (pnl && ln.fx ? '<div class="krwline"><span class="n ' + (pnl > 0 ? 'up' : 'down') + '">' + C.won(pnl, ln.fx.rate) + '</span>' +
-          '<span class="meta n">' + C.md(ln.fx.date) + ' 환율 ' + ln.fx.rate.toLocaleString('en-US', { minimumFractionDigits: 2 }) + '원</span></div>' : '') + rows.join('')
-        : '<p class="empty">' + C.mdw(ln.session) + '에는 주문이 없었어요.</p>') + '</section>';
+          '<span class="meta n">' + C.md(ln.fx.date) + ' 환율 ' + ln.fx.rate.toLocaleString('en-US', { minimumFractionDigits: 2 }) + '원</span></div>' : '') + bkTop + rows.join('')
+        : '<p class="empty">' + C.mdw(ln.session) + '에는 주문이 없었어요.</p>' + bkTop) + bkEnd + '</section>';
   }
 
   function compareCard(sc) {
@@ -285,10 +336,28 @@
     var b = !S.other && S.before && S.before.holdings;   // 남의 장부는 굴리지 않는다 (oldOrder처럼)
     var oldCash = b && bal(b) !== bal(h) ? C.money(bal(b)) : null;
     var fx = sc.fx, bc = sc.bc, bv = sc.view && sc.view.bc;
-    return '<section class="card"><div class="ch"><h2 class="ct">증권사 앱과 비교</h2><span class="meta">둘이 같으면 끝</span></div>' +
-      '<div class="cmp"><div><div class="meta">보유 수량</div><div class="n big">' + h.qty + '<span class="unit">주</span></div></div>' +
+    // 자동주문 A: 로봇이 받은 메리츠 숫자. 그 뒤 입력으로 장부 숫자가 바뀌었으면 ✓ 대신 받은 시각만
+    var bk = brokerOf(sc), bh = '', bcsh = '', head = '둘이 같으면 끝';
+    if (bk && (bk.status === 'same' || bk.status === 'differs')) {
+      var when = bk.at ? ' · ' + C.kstHm(bk.at) + ' 기준' : '';
+      var hd = bk.hold, cs = bk.cash;
+      if (hd && typeof hd.broker === 'number') {
+        bh = hd.ledger !== h.qty ? '<div class="bkc n">메리츠 ' + hd.broker + '주' + when + '</div>'
+          : '<div class="bkc n ' + (hd.same ? 'ok' : 'warn') + '">메리츠 ' + hd.broker + '주' + (hd.same ? ' ✓' : ' · 장부보다 ' + Math.abs(hd.broker - hd.ledger) + '주 ' + (hd.broker > hd.ledger ? '많음' : '적음')) + '</div>';
+      }
+      if (cs && typeof cs.brokerCents === 'number') {
+        var cm = '메리츠 ' + C.money(cs.brokerCents);
+        bcsh = cs.stale || cs.ledgerCents !== bal(h) ? '<div class="bkc n">' + cm + when + '</div>'   // 받은 뒤 입금·출금 등으로 장부가 바뀜
+          : cs.verdict === 'same' ? '<div class="bkc n ok">' + cm + ' ✓</div>'
+          : cs.verdict === 'rp' || cs.verdict === 'first' ? '<div class="bkc n ok">' + cm + ' ✓ · RP 이자 ' + C.money(cs.diffCents, true) + '</div>'
+          : '<div class="bkc n warn">' + cm + ' · 장부보다 ' + C.money(Math.abs(cs.diffCents)) + ' ' + (cs.diffCents > 0 ? '많음' : '적음') + '</div>';
+      }
+      if (bk.status === 'same') head = '로봇이 메리츠와 맞춰 봄 ✓';
+    }
+    return '<section class="card"><div class="ch"><h2 class="ct">증권사 앱과 비교</h2><span class="meta">' + head + '</span></div>' +
+      '<div class="cmp"><div><div class="meta">보유 수량</div><div class="n big">' + h.qty + '<span class="unit">주</span></div>' + bh + '</div>' +
       '<div><div class="meta">달러 잔고</div><div class="n big' + (oldCash ? ' flash' : '') + '">' + (oldCash ? digits(oldCash, cash, 'h32') : esc(cash)) + '</div>' +
-      (fx ? '<div class="krw n">' + C.krwApprox(bal(h), fx.rate) + '</div>' : '') + '</div></div>' +
+      (fx ? '<div class="krw n">' + C.krwApprox(bal(h), fx.rate) + '</div>' : '') + bcsh + '</div></div>' +
       (h.pendingCents ? '<div class="fx n">입금 대기 ' + C.money(h.pendingCents) + ' 포함 · 다음 BC 때 장부 현금에 들어가요</div>' : '') +
       // 환율: 로봇이 세션마다 미국 장 마감 뒤 한 번 받아 둔 값 (어젯밤 실현손익 원화와 같은 값)
       (fx ? '<div class="fx n">환율 ' + fx.rate.toLocaleString('en-US', { minimumFractionDigits: 2 }) + '원 · ' + (fx.date ? C.md(fx.date) + ' 장 마감 뒤' : C.kstWhen(fx.at, now())) + ' 기준 · 보기용(계산엔 안 씀)</div>' : '') +
@@ -303,6 +372,11 @@
     if (S.robotStop && !S.other) out.push('<div class="alert al-org rise" role="alert"><div class="al-head">로봇이 멈췄어요 · 장부 기록이 바뀌었어요</div>' +
       '무슨 일이 있었는지 관리에서 쉬운 말로 볼 수 있어요. 확인하기 전까지 모든 장부의 계산과 저장이 멈춰 있어요.' +
       '<button class="btn sm primary press" style="margin-top:10px" data-act="admin">관리에서 보기</button></div>');
+    var bk = brokerOf(sc);
+    if (bk && bk.status === 'differs') {
+      out.push('<div class="alert al-yel rise" role="status"><div class="al-head">증권사와 다른 곳이 있어요</div>' +
+        '로봇이 아침에 메리츠 기록과 어젯밤 결과를 맞춰 봤어요. 아래 어젯밤 결과와 증권사 앱과 비교에서 노란 글을 봐 주세요.</div>');
+    }
     if (nx && nx.changedAt) {
       var diffs = tonightOrders(sc).map(function (o) { var old = oldOrder(o); return old && old.price !== o.price ? o.side + ' ' + (o.lotId || '') + ' ' + C.price(old.price) + ' → ' + C.price(o.price) : ''; }).filter(Boolean);
       out.push('<div class="alert al-yel rise" role="status"><div class="al-head">주문 바뀜 · <span class="n">' + C.kstWhen(nx.changedAt, now()) + '</span></div>' +
@@ -1253,7 +1327,7 @@
       toast('넣었다고 적었어요');
     }).catch(function (e) { btn.disabled = false; btn.textContent = '증권사에 넣었어요'; toast(e.message || '창구에 닿지 못했어요'); });
   }
-  /** 21시 알림 켜기: 알림 허용 → 알림 받는 일꾼(sw.js) → 창구 도장 열쇠로 알림 주소 만들기 → 창구에 저장 → 시험 알림 */
+  /** 알림 켜기(21시 알림 · 증권사와 다를 때 알림 — 같은 알림 주소): 알림 허용 → 알림 받는 일꾼(sw.js) → 창구 도장 열쇠로 알림 주소 만들기 → 창구에 저장 → 시험 알림 */
   /** 시험 알림: 2분 안에 오는 알림은 시험이라고 sw.js에 알려 두고 보낸다 (알림에 내용이 없어서 — 10/26 미니 폰에서 진짜 21시 알림처럼 보였음) */
   function pushTest() {
     var mark = Promise.resolve();
@@ -1262,6 +1336,7 @@
   }
   function enablePush(btn) {
     if (needPhone()) return;
+    var label = btn.textContent;
     btn.disabled = true; btn.textContent = '켜는 중…';
     var reg;
     Notification.requestPermission().then(function (p) {
@@ -1279,7 +1354,7 @@
         redrawHome();
         return pushTest();
       }).then(function () { toast('켰어요. 시험 알림이 곧 와요'); })
-      .catch(function (e) { btn.disabled = false; btn.textContent = '21시 알림 켜기'; toast(e.message || '켜지 못했어요'); });
+      .catch(function (e) { btn.disabled = false; btn.textContent = label; toast(e.message || '켜지 못했어요'); });
   }
 
   /* ── ⑥ 관리 (관리자만 — 창구가 요청마다 관리자 폰인지 다시 확인: 로봇/RobotAdmin.gs) ── */

@@ -1,5 +1,5 @@
 /* 동파앱 화면 — 10/23 확정 시안(철검) 그대로. 시안: 시험/3단계/시안/V2.dc.html */
-@font-face{font-family:"PretendardDong";src:url("font/pretendard-dong.woff2?v=a1f2756-1") format("woff2");font-weight:45 920;font-display:swap}
+@font-face{font-family:"PretendardDong";src:url("font/pretendard-dong.woff2?v=2ca94aa-2") format("woff2");font-weight:45 920;font-display:swap}
 :root{color-scheme:dark;--bg:#000;--card:#111113;--nested:#1e1e20;--buy:#ff4a5a;--sell:#4c94ff;--buyt:#ff6b78;--sellt:#6aa8ff;--aggr:#ff9b9b;--safe:#8fb4ff;--top:env(safe-area-inset-top,0px);--bot:env(safe-area-inset-bottom,0px)}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:#000;color:#fff;overscroll-behavior:none}
@@ -456,3 +456,16 @@ button{font:inherit;color:inherit;cursor:pointer}
 .ocr.ink{color:#fff}
 .still .scrim,.still .sheet{animation:none}
 .ocmore{margin-top:12px}   /* 카드에 붙으면 겹쳐 보임 (10/27 형님 폰) */
+/* 자동주문 A: 증권사 기록과 맞춰 본 결과 (어젯밤 결과·증권사 앱과 비교) */
+.bk{display:flex;gap:6px;align-items:flex-start;margin:2px 12px 6px;border-radius:12px;padding:8px 12px;font-size:12px;line-height:18px;color:#c7c7cc;background:var(--nested)}
+.bk.ok{color:#5eead4;background:rgba(45,212,191,.10)}
+.bk.ok .chk{stroke:#5eead4;margin-top:2.5px}
+.bk.warn{color:#ffe066;background:#2b2405;box-shadow:inset 0 0 0 1px rgba(255,212,59,.45)}
+.bkwhy{color:#8e8e93;margin-top:2px;word-break:break-all}
+.bknote{margin:-4px 16px 6px 68px;font-size:12px;line-height:17px;color:#ffe066}
+.bkx{color:#ffe066}
+.bkc{font-size:12px;line-height:17px;color:#8e8e93;margin-top:2px}
+.bkc.ok{color:#5eead4}
+.bkc.warn{color:#ffe066}
+.bkp{padding:0 12px 6px}
+.bkp .btn{width:100%}
