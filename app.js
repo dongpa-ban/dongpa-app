@@ -23,7 +23,7 @@
   if (window.navigator.standalone === true) document.documentElement.classList.add('iosapp');
   var Q = new URLSearchParams(location.search);
   var KEY = 'dongpa.v1.';
-  var APP_VERSION = '2ca94aa-2';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
+  var APP_VERSION = '668f5a1-3';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
   // 시험 도우미(?sample·?src·?now·?moment·?tab·?every)는 저장소 판에서만. 배포된 앱에서는 무시한다 — 누가 ?src=로 가짜 주문표를 띄우는 링크를 못 만들게 (10/26 검토 AI)
   var DEV = APP_VERSION === 'dev';
   function testQ(k) { return DEV ? Q.get(k) : null; }
@@ -134,7 +134,7 @@
     return null;
   }
 
-  function ticket(sc, o, k) {
+  function ticket(sc, o, k, res) {
     var params = sc.view && sc.view.params || {};
     var buy = o.side === 'BUY';
     var old = oldOrder(o);
@@ -159,7 +159,7 @@
       (fixed && old.price !== o.price ? digits(C.price(old.price), p, 'h38') : esc(p)) + '</span>' +
       '<span class="n tkqty">× ' + esc(o.qty) + '주</span>' + (S.other ? '<span class="tkwho">(' + esc(S.other.name) + ')</span>' : '') + '</div>' +
       '<div class="tksub n"><span>' + esc(sub) + '</span>' +
-      (fixed ? '<span class="pill yel">바뀜 · 전 ' + (old.price !== o.price ? C.price(old.price) : old.qty + '주') + '</span>' : '') + '</div></div>';
+      (fixed ? '<span class="pill yel">바뀜 · 전 ' + (old.price !== o.price ? C.price(old.price) : old.qty + '주') + '</span>' : '') + '</div>' + (res || '') + '</div>';
   }
 
   function chartSvg(sc) {
@@ -219,9 +219,238 @@
       (stale ? '<div class="alert al-org rise in-card" role="alert"><div class="al-head">이 주문으로 주문하지 마세요</div>이 주문표는 ' + C.mdw(nx.session) +
         '용이에요. 로봇이 ' + C.span(now() - sc.at) + '째 새 화면을 못 만들었어요.</div>' : '') +
       '<div class="dimmable' + (stale ? ' dim' : '') + '">' +
-      (os.length ? '<div class="tks">' + os.map(function (o, k) { return ticket(sc, o, k); }).join('') + '</div>'
+      (os.length ? '<div class="tks">' + os.map(function (o, k) { return ticket(sc, o, k, sendResHtml(sc, o)); }).join('') + '</div>' + sendHtml(sc, st)
         : '<p class="empty">' + (nx.locked ? '오늘 밤 넣을 주문이 없어요.' : '오늘 밤 넣을 주문이 없어요.') + '</p>') +
       foot + placedHtml(sc, st) + chartSvg(sc) + '</div></section>';
+  }
+
+  /* 자동주문 작은 B: 오늘 밤 주문 밑 '보내기 ∨' → [증권사로 보내기] → 확인 창 → 밀어서 보내기 (창구 로봇/RobotSend.gs · 설계서 「작은 B 화면」, 11/5 형님) */
+  var SEND_FROM_MS = 5.5 * 3600000, SEND_CUT_MS = 10 * 60000;   // 창구와 같은 값: 개장 5시간 반 전부터 · 개장 10분 전까지
+  // 답을 못 받았거나 창구가 아직 보내는 중이면 몇 초마다 기록을 다시 본다. '보내지 않았어요'는 창구가 보내기 전에 거절했을 때,
+  // 또는 7분(구글 한 번 실행 한도 6분 + 여유)이 지나도 창구에 이 밤 기록이 없을 때만 — 창구는 메리츠를 부르기 전에 기록부터 적는다 (검토 11/5)
+  var SEND_POLL_MS = Number(testQ('every')) || 5000, SEND_WAIT_MS = 7 * 60000, SEND_POLL_FOR_MS = 10 * 60000;
+  var SV = function (d) { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + d + '"></path></svg>'; };
+  var CHEV_DN = SV('M6 9l6 6 6-6'), CHEV_UP = SV('M6 15l6-6 6 6'), ARROW = SV('M5 12h13M13 6l6 6-6 6'), HINT = SV('M9 6l6 6-6 6');
+  /** 이 장부·이 밤의 보낸 기록 (폰에는 하나만 남는다 — 다른 장부 링크를 열면 붙이지 않는다, 검토 11/5) */
+  function sendRecFor(sc) {
+    var r = S.sendRec || load('sendRec');
+    return r && sc && sc.next && r.session === sc.next.session && r.id === sc.id ? r : null;
+  }
+  /** [보내기]를 민 뒤 아직 결과를 모르는 밤 (앱을 닫았다 열어도 남게 저장) — 이 동안은 보내기 칸 대신 '확인 중' */
+  function sendTriedFor(sc) {
+    var t = S.sendTried !== undefined ? S.sendTried : load('sendTried');   // 폰 저장이 안 되는 때도 이 화면에서는 기억한다
+    return t && sc && sc.next && t.session === sc.next.session && t.id === sc.id ? t : null;
+  }
+  function setTried(v) { S.sendTried = v; save('sendTried', v); }
+  /** 창구가 아직 보내는 중인 기록(끝난 때가 없음). '중간에 멈춤'은 창구가 자기 시계로 정한다(stale) — 폰 시계·폰에 남은 옛 기록으로 정하지 않는다 (다시 검토 11/5) */
+  function sendLive(rec) { return !!rec && rec.done === false && !rec.stale; }
+  /** 보낸 줄의 결과 한 줄 (설계서: ✓ 접수 = 초록 / 그 밖 = 주황 + 손으로 · 창구가 아직 보내는 중이면 흐린 글) */
+  function sendRes(it, live) {
+    var t = it.sentAt ? ' · ' + C.kstHm(it.sentAt) : '';
+    if (live && it.state === 'wait') return { live: true, h: '아직 안 보냈어요 · 보내는 중이에요. 다시 보내지 마세요' };
+    if (live && it.state === 'sending') return { live: true, h: '보내는 중… · 다시 보내지 마세요' };
+    if (live && it.state === 'replied') return { live: true, h: '메리츠가 받았어요 · 접수를 확인하는 중' + t };
+    switch (it.state) {
+      case 'accepted': return { ok: true, h: '✓ 메리츠 접수' + t };
+      case 'rejected': return { ok: false, h: '⚠ 메리츠가 거부했어요 · 손으로 넣어 주세요', s: it.why };
+      case 'warn': return { ok: false, h: '⚠ 메리츠 경고 · 손으로 넣어 주세요', s: it.warnMsg };
+      case 'fail': return { ok: false, h: '⚠ 보내지 못했어요 · 손으로 넣어 주세요', s: it.why };
+      case 'mismatch': return it.cancel === 'done'   // 취소가 내역에서 확인됐을 때만 '취소했어요'
+        ? { ok: false, h: '⚠ 보낸 것과 다르게 접수돼 취소했어요 · 손으로 넣어 주세요' }
+        : { ok: false, h: '⚠ 보낸 것과 다르게 접수됐는데 취소를 확인하지 못했어요 · 메리츠 앱에서 꼭 보고 고쳐 주세요. 다시 보내지 마세요',
+          s: it.cancel === 'sent' ? '취소 요청은 보냈어요 · 취소됐는지 메리츠 앱에서 봐 주세요' : it.cancel };
+      case 'replied': case 'unseen': return { ok: false, h: '⚠ 접수를 아직 못 봤어요 · 메리츠 앱에서 확인해 주세요. 다시 보내지 마세요' };
+      case 'unknown': case 'sending': return { ok: false, h: '⚠ 확인 필요 · 메리츠 앱에서 이 주문을 보고, 없으면 손으로 넣어 주세요. 다시 보내지 마세요', s: it.why };
+      default: return { ok: false, h: '보내지 않았어요 · 손으로 넣어 주세요', s: it.why };   // 앞 줄이 모름이라 멈춤 · 마감 · 보내기 전 오류
+    }
+  }
+  function sendResHtml(sc, o) {
+    var rec = !S.other && sendRecFor(sc);
+    var it = rec && rec.items.filter(function (x) { return x.id === o.id; })[0];
+    if (!it) return '';
+    var r = sendRes(it, sendLive(rec));
+    return '<div class="tkres ' + (r.live ? 'live' : r.ok ? 'ok' : 'no') + '">' + esc(r.h) + (r.s ? '<small>' + esc(r.s) + '</small>' : '') + '</div>';
+  }
+  function sendHtml(sc, st) {
+    var nx = sc.next;
+    if (S.other || !sc.autoOrder || !nx || !(nx.orders || []).length) return '';
+    var rec = sendRecFor(sc);
+    var again = ' · <button class="linkbtn" data-act="send-refresh">다시 확인</button>';
+    if (rec && sendLive(rec)) {
+      var a0 = rec.items.filter(function (x) { return x.state === 'accepted'; }).length;
+      return '<div class="send"><div class="senddone live" role="status"><div class="sd1">보내는 중이에요 · 한국 ' + C.kstHm(rec.startedAt) + ' · ' + rec.items.length + '건 중 ' + a0 + '건 접수</div>' +
+        (now() - rec.startedAt > SEND_WAIT_MS ? '<div class="sd2">창구에 다시 닿지 못해 결과를 아직 몰라요. 메리츠 앱에서 확인해 주세요</div>' : '') +
+        '<div class="sd2">다시 보내지 마세요. 끝나면 줄마다 결과가 나와요' + again + '</div></div></div>';
+    }
+    if (rec) {
+      var n = rec.items.length, a = rec.items.filter(function (x) { return x.state === 'accepted'; }).length;
+      return '<div class="send"><div class="senddone" role="status"><div class="sd1">보냄 · 한국 ' + C.kstHm(rec.startedAt) + ' · ' + n + '건 중 ' + a + '건 접수' + (a === n ? ' ✓' : '') + '</div>' +
+        (rec.done === false ? '<div class="sd2 warn">보내기가 중간에 끊겼어요 — 주황 글 줄은 메리츠 앱에서 보고 손으로 넣어 주세요</div>' : '') +
+        (a < n ? '<div class="sd2">접수 안 된 줄은 메리츠 앱에서 보고 손으로 넣어 주세요(주황 글). 같은 밤에는 다시 안 보내요.</div>' : '') +
+        (rec.strange > 0 ? '<div class="sd2 warn">우리가 보내지 않은 SOXL 주문이 메리츠에 ' + rec.strange + '건 보여요 — 메리츠 앱에서 확인해 주세요</div>' : '') +
+        '<div class="sd2">메리츠 앱에서도 한 번 봐 주세요' + again + '</div></div></div>';
+    }
+    if (sendTriedFor(sc)) {   // 밀었는데 답을 아직 모름 — 보냈을 수도 있으니 보내기 칸을 다시 보이지 않는다
+      return '<div class="send"><div class="senddone live" role="status"><div class="sd1">보낸 결과를 확인하는 중이에요</div>' +
+        '<div class="sd2">창구의 답을 아직 못 받았어요. 보냈을 수도 있으니 다시 보내지 마세요' + again + '</div></div></div>';
+    }
+    if (st.kind !== 'before') return '';
+    var open = !!S.sendOpen, t = now(), from = st.openMs - SEND_FROM_MS, cut = st.openMs - SEND_CUT_MS, can = t >= from && t < cut;
+    return '<div class="send"><button class="sendrow press" data-act="send-toggle" aria-expanded="' + open + '"><span>보내기 ' + (open ? CHEV_UP : CHEV_DN) + '</span></button>' +
+      (open ? '<button class="sendbtn press" data-act="send-open"' + (can ? '' : ' disabled') + '>증권사로 보내기 <small>· ' + nx.orders.length + '건</small></button>' +
+        '<div class="sendcap">' + (t < from ? '한국 ' + C.kstHm(from) + '부터 보낼 수 있어요' : t >= cut ? '개장 10분 전이 지났어요 · 손으로 넣어 주세요' : '누르면 확인 창이 떠요 · 한국 ' + C.kstHm(cut) + '까지') + '</div>' : '') + '</div>';
+  }
+  /** 확인 창 몸통 (S.sheet.kind === 'send') */
+  function sendSheetBody(Sh) {
+    if (Sh.state === 'loading') return '<p class="sp">메리츠를 확인하는 중이에요…</p>';
+    if (Sh.state === 'sending') return '<p class="sp">보내는 중이에요. 창을 닫지 마세요…</p><div class="slide busy"><div class="strack"><div class="sknob">' + ARROW + '</div><div class="slab"><span class="t1">보내는 중…</span></div></div></div>';
+    if (Sh.state === 'lost') return '<div class="prev warn">창구의 답을 못 받았어요. 보냈을 수도 있어서 다시 보내지 않아요. 결과를 확인하는 중이에요 — 다시 보내지 마세요.</div>' +
+      '<p class="sp">창을 닫아도 돼요. 결과는 오늘 밤 주문 밑에 나와요.</p><button class="btn wide ghost2 press" data-act="sheet-close">닫기</button>';
+    if (Sh.state === 'error') return '<div class="prev warn">' + esc(Sh.err) + '</div><button class="btn wide ghost2 press" data-act="sheet-close">닫기</button>';
+    var res = Sh.res, nx = S.screen && S.screen.next;
+    var same = !!nx && res.digest === nx.digest && res.session === nx.session;
+    var ok = res.canSend && same;
+    var rows = res.orders.map(function (o) {
+      return '<div class="lrow sl"><span class="side ' + (o.side === 'BUY' ? 'sbuy' : 'ssell') + '">' + esc(o.side) + '</span><div class="lmid"><div class="n l1">' + esc(o.type) + ' ' + (o.price === null ? '시장가' : C.price(o.price)) + ' × ' + esc(o.qty) + '주</div>' +
+        '<div class="n sub">' + (o.lotId ? esc(o.lotId) : '새 Lot') + '</div></div><div class="lrt"><div class="n lamt ' + (o.side === 'BUY' ? 'ink' : 'mute') + '">' + (o.side === 'BUY' ? C.money(-Math.round(o.price * o.qty * 100)) : '') + '</div></div></div>';
+    }).join('');
+    var checks = '<div class="prev chks">' + res.checks.map(function (x) { return '<div class="ck1 ' + (x.ok ? 'ok' : 'no') + '"><span>' + (x.ok ? '✓' : '✗') + '</span> ' + esc(x.text) + '</div>'; }).join('') + '</div>';
+    var warn = !same ? '<div class="prev warn">화면의 주문과 창구가 본 주문이 달라요. 앱을 닫았다가 다시 열어 주세요.</div>'
+      : !res.canSend ? '<div class="prev warn">' + esc(res.problems[0] || '보낼 수 없어요') + (res.problems.length > 1 ? ' (외 ' + (res.problems.length - 1) + '가지)' : '') + '<br>오늘 밤은 손으로 넣어 주세요.</div>' : '';
+    return '<p class="sp">' + C.mdw(res.session) + ' 밤 · 메리츠 ' + esc((S.screen && S.screen.name) || '') + ' 계좌 · SELL 먼저, BUY 나중으로 보내요</p>' +
+      '<div>' + rows + '</div>' + checks + warn +
+      '<div class="slide' + (ok ? '' : ' off') + '"><div class="strack" role="group" aria-label="밀어서 증권사로 보내기"><button class="sknob" type="button"' + (ok ? '' : ' disabled') +
+        ' aria-label="끝까지 밀거나 길게 눌러 보내기">' + ARROW + '</button><div class="slab"><span class="t1">' + (ok ? '밀어서 증권사로 보내기' : '보낼 수 없어요') + '</span><span class="t2">' + res.orders.length + '건 · 끝까지 밀어야 보내져요</span></div>' +
+        '<div class="shint">' + HINT + HINT + '</div></div>' + (ok ? '<div class="sendcap">밀기가 어려우면 손잡이를 길게 누르세요</div>' : '') + '</div>';
+  }
+  /** 밀어서 보내기: 끝까지 밀거나(96%) 손잡이를 1.5초 누르면(끌기가 어려울 때 — WCAG 2.5.7) 보낸다. 중간에 놓으면 돌아간다.
+   *  누르는 동안 줄이 차오른다. 두 번째 손가락은 무시하고, 한 손가락만 따라간다 (검토 11/5) */
+  function bindSlide(tr) {
+    var knob = tr && tr.querySelector('.sknob');
+    if (!knob || knob.disabled) return;
+    var max = 0, x0 = 0, x = 0, drag = false, hold = null, done = false, moved = false, pid = null;
+    function set(v) { x = Math.max(0, Math.min(max, v)); knob.style.transform = 'translateX(' + x + 'px)'; tr.style.setProperty('--p', max ? (x / max).toFixed(3) : '0'); }
+    function holding(on) { tr.classList.toggle('holding', !!on); }
+    function fire() {
+      if (done || !knob.isConnected) return;   // 창이 닫혔거나 다시 그려졌으면 보내지 않는다
+      done = true; clearTimeout(hold); holding(false);
+      max = max || tr.clientWidth - knob.offsetWidth - 10; set(max); doSend();
+    }
+    knob.addEventListener('pointerdown', function (e) {
+      if (done || !e.isPrimary) return;
+      clearTimeout(hold);
+      max = tr.clientWidth - knob.offsetWidth - 10; x0 = e.clientX - x; drag = true; moved = false; pid = e.pointerId;
+      try { knob.setPointerCapture(e.pointerId); } catch (err) { /* 그냥 넘어간다 */ }
+      knob.style.transition = 'none';
+      holding(true);
+      hold = setTimeout(function () { if (drag && !moved) fire(); }, 1500);
+    });
+    knob.addEventListener('pointermove', function (e) {
+      if (!drag || done || e.pointerId !== pid) return;
+      var v = e.clientX - x0;
+      if (!moved && Math.abs(v) > 6) { moved = true; clearTimeout(hold); holding(false); }
+      set(v);
+      if (x >= max * 0.96) fire();
+    });
+    function up(e) {
+      if (!drag || (e && e.pointerId !== pid)) return;
+      drag = false; clearTimeout(hold); holding(false);
+      if (!done) { knob.style.transition = 'transform 260ms cubic-bezier(.23,1,.32,1)'; set(0); }
+    }
+    knob.addEventListener('pointerup', up);
+    knob.addEventListener('pointercancel', up);
+    knob.addEventListener('lostpointercapture', up);
+    knob.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fire(); } });
+  }
+  function openSend() {
+    if (needPhone()) return;
+    var Sh = { kind: 'send', state: 'loading' };
+    S.sheet = Sh; renderOverlays();
+    windowCall({ a: 'send_check', phone: load('phoneKey') }).then(function (r) {
+      if (S.sheet !== Sh) return;
+      if (!r.ok) { Sh.state = 'error'; Sh.err = r.message || why(r.why); renderOverlays(); return; }
+      if (r.sent) { S.sendOpen = false; sendKeep(r.sent, Sh); toast('오늘 밤은 이미 보냈어요'); return; }
+      Sh.res = r; Sh.state = 'ready'; renderOverlays();
+    }).catch(function (e) { if (S.sheet !== Sh) return; Sh.state = 'error'; Sh.err = '창구에 닿지 못했어요 (' + e.message + ')'; renderOverlays(); });
+  }
+  // 창구가 '보내기 전에' 거절한 까닭 — 이때만 '보내지 않았어요'라고 말한다. 그 밖(창구 오류·답 없음)은 보냈을 수도 있어 기록을 본다
+  var SEND_NOT_SENT = /^(changed|blocked|unknown_phone|not_on|no_key|stopped|unsaved)$/;
+  function doSend() {
+    var Sh = S.sheet, res = Sh && Sh.res;
+    if (!res || Sh.state !== 'ready') return;
+    Sh.state = 'sending'; renderOverlays();
+    S.sendOpen = false;
+    setTried({ id: S.screen && S.screen.id, session: res.session, at: now() });   // 답이 오기 전에 창이나 앱을 닫아도 보내기 칸을 다시 보이지 않게
+    redrawHome();
+    windowCall({ a: 'send', phone: load('phoneKey'), session: res.session, digest: res.digest }).then(function (r) {
+      if (r.ok && r.rec) {
+        sendKeep(r.rec, Sh);
+        var n = r.rec.items.length, a = r.rec.items.filter(function (x) { return x.state === 'accepted'; }).length;
+        toast(a === n ? '보냈어요 · 모두 접수 ✓' : '보냈어요 · 결과를 확인해 주세요');
+        return;
+      }
+      if (r.why === 'already' && r.sent) { sendKeep(r.sent, Sh); toast('오늘 밤은 이미 보냈어요'); return; }   // 다른 폰·창이 먼저 보냄 — 그 기록을 보인다
+      if (r.why === 'busy') { sendBusy(Sh); return; }
+      if (SEND_NOT_SENT.test(String(r.why))) {   // 창구가 보내기 전에 거절 — 이때만 바로 '보내지 않았어요'
+        setTried(null);
+        Sh.state = 'error';
+        Sh.err = (r.message || why(r.why)) + ' — 보내지 않았어요';
+        if (S.sheet === Sh) renderOverlays();
+        redrawHome();
+        return;
+      }
+      sendLost(Sh);
+    }).catch(function () { sendLost(Sh); });
+  }
+  /** 창구가 '바쁨'(20초 기다려도 잠금을 못 잡음): 이 요청은 안 보냈지만, 다른 보내기(두 번째 창 등)가 잠금을 쥐고 보내는 중일 수 있다.
+   *  그런 보내기는 잠금을 잡자마자 기록부터 적으므로, 기록을 한 번 보고 없을 때만 '아직 안 보냈어요' (검토 11/5) */
+  function sendBusy(Sh) {
+    windowCall({ a: 'send_status', phone: load('phoneKey') }).then(function (r) {
+      if (!r || !r.ok) throw new Error('status');
+      var sc = S.screen, rec = r.rec && sc && sc.next && r.rec.session === sc.next.session && r.rec.id === sc.id ? r.rec : null;
+      if (rec) { sendKeep(rec, Sh); toast('오늘 밤은 이미 보냈어요'); return; }
+      setTried(null);
+      Sh.state = 'error'; Sh.err = '로봇이 도는 중이에요. 아직 안 보냈어요 — 잠시 뒤 다시 해 주세요';
+      if (S.sheet === Sh) renderOverlays();
+      redrawHome();
+    }).catch(function () { sendLost(Sh); });
+  }
+  function sendLost(Sh) { Sh.state = 'lost'; if (S.sheet === Sh) renderOverlays(); redrawHome(); sendRefresh(Sh); }
+  /** 받은 기록을 이 밤 결과로 둔다 (보낸 답 · 확인 창 · 이미 보냄 · 다시 보기). 아직 보내는 중이면 계속 다시 본다 */
+  function sendKeep(rec, Sh) {
+    S.sendRec = rec; save('sendRec', rec); setTried(null);
+    if (Sh && S.sheet === Sh) { S.sheet = null; renderOverlays(); }
+    redrawHome();
+    if (sendLive(rec)) sendPollLater(null);
+  }
+  /** 결과를 모르는 동안(밀었는데 답 없음 · 창구가 보내는 중)만 다시 본다: 처음 10분은 몇 초마다, 그 뒤는 1분마다 */
+  function sendPollLater(Sh) {
+    var sc = S.screen, t = sendTriedFor(sc), rec = sendRecFor(sc);
+    clearTimeout(S.sendPollT); S.sendPollT = null;
+    if (!t && !sendLive(rec)) return;
+    var since = t ? t.at : rec.startedAt;
+    S.sendPollT = setTimeout(function () { sendRefresh(Sh); }, now() - since < SEND_POLL_FOR_MS ? SEND_POLL_MS : 60000);
+  }
+  /** 보낸 기록 다시 보기 (조회만). 답을 못 받았거나(Sh) 창구가 아직 보내는 중이면 몇 초마다 다시 본다.
+   *  기록이 없다고 바로 '보내지 않았어요'라고 하지 않는다 — 창구가 아직 잠금을 기다리는 중일 수 있다 */
+  function sendRefresh(Sh) {
+    if (!load('phoneKey')) return;
+    if (!Sh && S.sheet && S.sheet.kind === 'send' && S.sheet.state === 'lost') Sh = S.sheet;   // [다시 확인]을 눌러도 열린 '답 없음' 창이 결과를 받게
+    clearTimeout(S.sendPollT); S.sendPollT = null;
+    windowCall({ a: 'send_status', phone: load('phoneKey') }).then(function (r) {
+      if (!r || !r.ok) throw new Error(r && r.why || 'status');
+      var sc = S.screen, rec = r.rec && sc && sc.next && r.rec.session === sc.next.session && r.rec.id === sc.id ? r.rec : null;
+      if (rec) { sendKeep(rec, Sh); return; }
+      var t = sendTriedFor(sc);
+      if (t && now() - t.at >= SEND_WAIT_MS) {   // 7분이 지나도 이 밤 기록이 없다 → 메리츠를 부르지 않았다
+        setTried(null);
+        if (Sh && S.sheet === Sh) { Sh.state = 'error'; Sh.err = '보낸 기록이 없어요 — 보내지 않았어요. 메리츠 앱을 먼저 확인하고, 다시 하려면 확인 창을 다시 열어 주세요'; renderOverlays(); }
+        redrawHome();
+        toast('보낸 기록이 없어요 · 보내지 않았어요');
+        return;
+      }
+      sendPollLater(Sh);
+    }).catch(function () { sendPollLater(Sh); });   // 조회 실패: 결과를 모르면 계속 다시 본다(화면 글은 그대로 '확인 중')
   }
 
   /* ④-1 [증권사에 넣었어요] — settings.placedCheck인 사람만 (로봇/RobotPush.gs) */
@@ -881,6 +1110,9 @@
     else if (act === 'form-more') { S.form.moreOrders = true; renderOverlays(); }
     else if (act === 'form-save') saveForm();
     else if (act === 'placed') markPlaced(t);
+    else if (act === 'send-toggle') { S.sendOpen = !S.sendOpen; redrawHome(); }
+    else if (act === 'send-open') openSend();
+    else if (act === 'send-refresh') { sendRefresh(null); toast('메리츠에서 다시 확인하는 중…'); }
     else if (act === 'check') decideCheck(t);
     else if (act === 'admin') openAdmin();
     else if (act === 'admin-close') { S.adminOpen = false; renderOverlays(); }
@@ -1584,6 +1816,9 @@
         : esc(Sh.name) + '의 옛 링크와 등록된 폰은 바로 안 열려요. 새 링크를 열고 PIN을 다시 넣어야 해요. 폰을 잃어버렸을 때도 이 단추를 써요.') + '</p>' +
         (Sh.self ? '<div class="prev warn">지금 이 폰도 끊겨요. 새 링크로 다시 등록하기 전까지는 관리를 못 써요.</div>' : '') +
         '<div class="two"><button class="btn ghost2 press" data-act="sheet-close">취소</button><button class="btn primary press" data-act="nl-go">새 링크 만들기</button></div>';
+    } else if (Sh.kind === 'send') {
+      title = '오늘 밤 주문을 보낼까요?';
+      body = sendSheetBody(Sh);
     } else if (Sh.kind === 'add') {
       var bcC = cents(Sh.bc), N = S.screen && S.screen.next ? C.mdw(S.screen.next.session) : '다음';
       title = '사람 추가';
@@ -1602,6 +1837,7 @@
       '<div class="sheet tall" role="dialog" aria-modal="true" aria-label="' + title + '"><div class="grab"></div>' +
       '<div class="shd"><h2 class="sh2">' + title + '</h2><button class="btn sm ghost2 press" data-act="sheet-close">닫기</button></div><div class="sheetin">' + body + '</div></div>';
     root.appendChild(w);
+    if (Sh.kind === 'send' && Sh.state === 'ready') bindSlide(w.querySelector('.strack'));
     w.addEventListener('input', function (e) {
       if (!S.sheet || S.sheet.kind !== 'add') return;
       if (e.target.id === 'sh-name') S.sheet.name = e.target.value;
@@ -1800,6 +2036,8 @@
     if (S.fid && !load('phoneKey') && !S.pinLater && !S.pin && !S.moment) S.pin = { msg: '', ok: false, busy: false };
     render();
     rememberMoments(sc);
+    // 자동주문 작은 B: 이 밤 보낸 기록 (앱을 열 때 한 번 — 다른 폰에서 보냈어도 보이게)
+    if (sc && sc.autoOrder && sc.next && !S.sendAsked && load('phoneKey') && !testQ('sample')) { S.sendAsked = true; sendRefresh(null); }
   }
 
   function bootMsg(text) {
@@ -1833,6 +2071,10 @@
     // 새 링크(# 뒤 열쇠)로 바꿔 열면 처음부터 다시 (같은 페이지라 저절로는 안 다시 읽는다)
     window.addEventListener('hashchange', function () { location.reload(); });
     // 다른 앱(증권사 앱 등)에 갔다 돌아오면 새 화면을 한 번 살핀다 (1분에 한 번까지)
+    // 자동주문 작은 B: 보낸 결과를 모르는 채 다른 앱(메리츠 앱)에 다녀오면 바로 다시 본다
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden && (sendTriedFor(S.screen) || sendLive(sendRecFor(S.screen)))) sendRefresh(null);
+    });
     document.addEventListener('visibilitychange', function () {
       if (document.hidden || !cur() || Date.now() - (S.lookAt || 0) < 60000) return;
       refresh();

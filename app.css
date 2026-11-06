@@ -1,5 +1,5 @@
 /* 동파앱 화면 — 10/23 확정 시안(철검) 그대로. 시안: 시험/3단계/시안/V2.dc.html */
-@font-face{font-family:"PretendardDong";src:url("font/pretendard-dong.woff2?v=2ca94aa-2") format("woff2");font-weight:45 920;font-display:swap}
+@font-face{font-family:"PretendardDong";src:url("font/pretendard-dong.woff2?v=668f5a1-3") format("woff2");font-weight:45 920;font-display:swap}
 :root{color-scheme:dark;--bg:#000;--card:#111113;--nested:#1e1e20;--buy:#ff4a5a;--sell:#4c94ff;--buyt:#ff6b78;--sellt:#6aa8ff;--aggr:#ff9b9b;--safe:#8fb4ff;--top:env(safe-area-inset-top,0px);--bot:env(safe-area-inset-bottom,0px)}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:#000;color:#fff;overscroll-behavior:none}
@@ -469,3 +469,43 @@ button{font:inherit;color:inherit;cursor:pointer}
 .bkc.warn{color:#ffe066}
 .bkp{padding:0 12px 6px}
 .bkp .btn{width:100%}
+/* 자동주문 작은 B: 보내기 (설계서 「작은 B 화면」 — 다안 + ① 에메랄드, 11/5 형님) */
+.send{margin:2px 0 0;padding:0 12px}   /* 티켓(.tks)과 같은 옆 여백 */
+.sendrow{display:flex;align-items:center;gap:10px;width:100%;height:44px;border:0;background:none;color:#a1a1a6;font-size:13px;font-weight:600;padding:0}
+.sendrow:before,.sendrow:after{content:"";flex:1;height:1px;background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.14))}
+.sendrow:after{background:linear-gradient(90deg,rgba(255,255,255,.14),rgba(255,255,255,0))}
+.sendrow span{display:flex;align-items:center;gap:4px}
+.sendrow svg,.slide svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.sendbtn{margin-top:8px;height:52px;width:100%;border:0;border-radius:16px;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:6px;background:linear-gradient(180deg,#143a2d,#0f2e23);color:#d7f2e5;box-shadow:inset 0 0 0 1px rgba(110,231,183,.22),inset 0 1px 0 rgba(255,255,255,.05)}
+.sendbtn small{font-size:13px;font-weight:500;color:#8fc1aa}
+.sendbtn:disabled{opacity:.45}
+.sendcap{font-size:12px;color:#8e8e93;text-align:center;margin-top:7px}
+.tkres{margin-top:9px;padding-top:9px;border-top:1px solid rgba(255,255,255,.12);font-size:13px;line-height:18px;font-weight:700}
+.tkres.ok{color:#6fd3a8}.tkres.no{color:#ffb35c}.tkres.live{color:#a7c8b8;font-weight:600}
+.tkres small{display:block;font-weight:500;color:#c7c7cc;font-size:12px;margin-top:2px}
+.senddone{margin-top:10px;border-radius:16px;padding:12px 14px;background:#0f2a21;box-shadow:inset 0 0 0 1px rgba(110,220,170,.22)}
+.sd1{font-size:14px;font-weight:700;color:#cdeee0}
+.sd2{font-size:12px;line-height:18px;color:#a7c8b8;margin-top:4px}.sd2.warn{color:#ffb35c}
+/* 결과를 아직 모름(확인 중·보내는 중): 초록 '보냄'과 다르게 무채색 */
+.senddone.live{background:#1c1c1e;box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)}.senddone.live .sd1{color:#f2f2f7}.senddone.live .sd2{color:#aeaeb2}
+.lrow.sl{padding:7px 0}
+.chks{line-height:22px}.ck1 span{font-weight:800}.ck1.ok span{color:#6fd3a8}.ck1.no{color:#ffb35c}
+.strack{position:relative;height:60px;border-radius:999px;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:none;
+  background:linear-gradient(180deg,#0f2b21,#0a2019);box-shadow:inset 0 0 0 1px rgba(110,220,170,.17),inset 0 1px 0 rgba(255,255,255,.04)}
+.slab{position:relative;display:flex;flex-direction:column;align-items:center;line-height:1.15;pointer-events:none;opacity:calc(1 - var(--p,0) * 1.4)}   /* 차오르는 줄 위에 글자 */
+.slab .t1{font-size:15px;font-weight:700;letter-spacing:-.01em;color:#cdeee0}
+.slab .t2{font-size:11.5px;font-weight:500;margin-top:3px;color:#7fae98}
+.sknob{position:absolute;left:5px;top:5px;width:50px;height:50px;border:0;padding:0;border-radius:999px;display:flex;align-items:center;justify-content:center;z-index:1;
+  background:linear-gradient(180deg,#3a9b78,#216a51);color:#f1fff9;box-shadow:inset 0 1px 0 rgba(255,255,255,.28),inset 0 -1px 0 rgba(0,0,0,.25),0 6px 14px rgba(0,0,0,.5);touch-action:none}
+.sknob svg{width:22px;height:22px;stroke-width:2.4}
+.sknob:focus-visible{outline:2px solid #cdeee0;outline-offset:3px}
+.shint{position:absolute;right:20px;top:50%;transform:translateY(-50%);display:flex;gap:1px;opacity:.6;color:#5f9c82;pointer-events:none}
+.shint svg{width:14px;height:14px}
+.slide.off .strack{opacity:.5}.slide.off .sknob{filter:grayscale(1)}
+.slide.busy .sknob{animation:sbusy 1.2s ease-in-out infinite}
+@keyframes sbusy{50%{transform:translateX(8px)}}
+/* 길게 누르는 동안 줄이 1.5초에 걸쳐 차오른다 — 다 차면 보낸다 (움직임 줄이기 설정에서도 남긴다: 진행을 알려 주는 표시라서) */
+.strack::before{content:"";position:absolute;inset:0;border-radius:inherit;transform-origin:left center;transform:scaleX(0);pointer-events:none;
+  background:linear-gradient(90deg,rgba(58,155,120,.42),rgba(58,155,120,.22))}
+.strack.holding::before{animation:shold 1.5s linear forwards}
+@keyframes shold{to{transform:scaleX(1)}}
