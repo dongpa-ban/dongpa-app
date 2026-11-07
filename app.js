@@ -23,7 +23,7 @@
   if (window.navigator.standalone === true) document.documentElement.classList.add('iosapp');
   var Q = new URLSearchParams(location.search);
   var KEY = 'dongpa.v1.';
-  var APP_VERSION = '668f5a1-3';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
+  var APP_VERSION = '499c1bc-4';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
   // 시험 도우미(?sample·?src·?now·?moment·?tab·?every)는 저장소 판에서만. 배포된 앱에서는 무시한다 — 누가 ?src=로 가짜 주문표를 띄우는 링크를 못 만들게 (10/26 검토 AI)
   var DEV = APP_VERSION === 'dev';
   function testQ(k) { return DEV ? Q.get(k) : null; }
@@ -1561,6 +1561,13 @@
   }
   /** 알림 켜기(21시 알림 · 증권사와 다를 때 알림 — 같은 알림 주소): 알림 허용 → 알림 받는 일꾼(sw.js) → 창구 도장 열쇠로 알림 주소 만들기 → 창구에 저장 → 시험 알림 */
   /** 시험 알림: 2분 안에 오는 알림은 시험이라고 sw.js에 알려 두고 보낸다 (알림에 내용이 없어서 — 10/26 미니 폰에서 진짜 21시 알림처럼 보였음) */
+  /** 보내기 잊음 알림(11/7): 알림에 내용이 없어서, '이 폰은 자동주문 장부'를 알림 일꾼(sw.js)에 적어 둔다 — 밤 알림을 보내기 문구로 띄우게 */
+  function autoFlag(sc) {
+    var v = sc && sc.autoOrder === true ? '1' : '0';
+    if (S.autoFlag === v) return;
+    S.autoFlag = v;
+    try { caches.open('dongpa-flags').then(function (c) { return c.put('auto-order', new Response(v)); }).catch(function () {}); } catch (e) { /* 저장소를 못 쓰면 21시 알림 문구로 */ }
+  }
   function pushTest() {
     var mark = Promise.resolve();
     try { mark = caches.open('dongpa-flags').then(function (c) { return c.put('test-push', new Response(String(Date.now() + 120000))); }).catch(function () {}); } catch (e) { /* 저장소를 못 쓰면 진짜 알림 문구로 */ }
@@ -2036,6 +2043,7 @@
     if (S.fid && !load('phoneKey') && !S.pinLater && !S.pin && !S.moment) S.pin = { msg: '', ok: false, busy: false };
     render();
     rememberMoments(sc);
+    autoFlag(sc);
     // 자동주문 작은 B: 이 밤 보낸 기록 (앱을 열 때 한 번 — 다른 폰에서 보냈어도 보이게)
     if (sc && sc.autoOrder && sc.next && !S.sendAsked && load('phoneKey') && !testQ('sample')) { S.sendAsked = true; sendRefresh(null); }
   }
