@@ -23,7 +23,7 @@
   if (window.navigator.standalone === true) document.documentElement.classList.add('iosapp');
   var Q = new URLSearchParams(location.search);
   var KEY = 'dongpa.v1.';
-  var APP_VERSION = '21dad2e-7';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
+  var APP_VERSION = '6f27a91-8';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
   // 시험 도우미(?sample·?src·?now·?moment·?tab·?every)는 저장소 판에서만. 배포된 앱에서는 무시한다 — 누가 ?src=로 가짜 주문표를 띄우는 링크를 못 만들게 (10/26 검토 AI)
   var DEV = APP_VERSION === 'dev';
   function testQ(k) { return DEV ? Q.get(k) : null; }
@@ -619,11 +619,14 @@
       var when = bk.at ? ' · ' + C.kstHm(bk.at) + ' 기준' : '';
       var hd = bk.hold, cs = bk.cash;
       if (hd && typeof hd.broker === 'number') {
-        bh = hd.ledger !== h.qty ? '<div class="bkc n">메리츠 ' + hd.broker + '주' + when + '</div>'
-          : '<div class="bkc n ' + (hd.same ? 'ok' : 'warn') + '">메리츠 ' + hd.broker + '주' + (hd.same ? ' ✓' : ' · 장부보다 ' + Math.abs(hd.broker - hd.ledger) + '주 ' + (hd.broker > hd.ledger ? '많음' : '적음')) + '</div>';
+        // 동파 밖 주식(미니가 늘 남겨 두는 SOXL — settings.brokerOutsideShares)이 있으면 그만큼 뺀 수로 비교한 것 (11/10 형님)
+        var hq = hd.outside > 0 ? hd.broker - hd.outside : hd.broker, hm = '메리츠 ' + hq + '주' + (hd.outside > 0 ? ' (동파 밖 ' + hd.outside + '주 뺌)' : '');
+        bh = hd.ledger !== h.qty ? '<div class="bkc n">' + hm + when + '</div>'
+          : '<div class="bkc n ' + (hd.same ? 'ok' : 'warn') + '">' + hm + (hd.same ? ' ✓' : ' · 장부보다 ' + Math.abs(hq - hd.ledger) + '주 ' + (hq > hd.ledger ? '많음' : '적음')) + '</div>';
       }
       if (cs && typeof cs.brokerCents === 'number') {
-        var cm = '메리츠 ' + C.money(cs.brokerCents);
+        // 동파 밖 돈(메리츠 계좌에 따로 둔 돈 — settings.brokerOutsideCents)이 있으면 그만큼 뺀 숫자로 비교한 것 (11/10 형님)
+        var cm = cs.outsideCents > 0 ? '메리츠 ' + C.money(cs.brokerCents - cs.outsideCents) + ' (동파 밖 ' + C.money(cs.outsideCents) + ' 뺌)' : '메리츠 ' + C.money(cs.brokerCents);
         bcsh = cs.stale || cs.ledgerCents !== bal(h) ? '<div class="bkc n">' + cm + when + '</div>'   // 받은 뒤 입금·출금 등으로 장부가 바뀜
           : cs.verdict === 'same' ? '<div class="bkc n ok">' + cm + ' ✓</div>'
           : cs.verdict === 'rp' || cs.verdict === 'first' ? '<div class="bkc n ok">' + cm + ' ✓ · RP 이자 ' + C.money(cs.diffCents, true) + '</div>'
