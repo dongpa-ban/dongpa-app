@@ -23,7 +23,7 @@
   if (window.navigator.standalone === true) document.documentElement.classList.add('iosapp');
   var Q = new URLSearchParams(location.search);
   var KEY = 'dongpa.v1.';
-  var APP_VERSION = '499c1bc-4';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
+  var APP_VERSION = '4411c7e-5';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
   // 시험 도우미(?sample·?src·?now·?moment·?tab·?every)는 저장소 판에서만. 배포된 앱에서는 무시한다 — 누가 ?src=로 가짜 주문표를 띄우는 링크를 못 만들게 (10/26 검토 AI)
   var DEV = APP_VERSION === 'dev';
   function testQ(k) { return DEV ? Q.get(k) : null; }
@@ -242,6 +242,52 @@
     return t && sc && sc.next && t.session === sc.next.session && t.id === sc.id ? t : null;
   }
   function setTried(v) { S.sendTried = v; save('sendTried', v); }
+  /* 자동주문 4단계(미니, v2.1): 이 장부의 메리츠 열쇠가 작은 로봇(미니 구글 계정)에 있으면 보내기·확인·기록 보기를 그 주소로 (screen.orderRobot).
+     폰 열쇠를 실어 보내므로 주소는 장부 값만 믿지 않는다: 코드 저장소의 config.json orderRobots[장부](주소의 SHA-256 — 공개 저장소에 주소를 안 남김)와 맞을 때만
+     (합치기 검토를 거친 주소 — 검토 11/9).
+     작은 로봇은 부를 때마다 형님 창구에 '이 장부의 폰인가'를 묻는다 */
+  var ROBOT_URL = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,120}\/exec$/;
+  /** 작은 로봇 장부인가 (화면 파일에 칸이 있음 — 주소를 믿어도 되는지는 robotUrl) */
+  function sendTarget(sc) { return !!(sc && sc.orderRobot); }
+  /** 믿을 수 있는 작은 로봇 주소 (약속): 화면 주소의 SHA-256 = 앱 설정(config.json)에 그 장부로 적힌 지문. 아니면 null (그땐 아무 데도 안 보낸다) */
+  function robotUrl(sc, c) {
+    var u = sc && sc.orderRobot && sc.orderRobot.url, a = c && c.orderRobots && sc && c.orderRobots[sc.id];
+    if (typeof u !== 'string' || !ROBOT_URL.test(u) || typeof a !== 'string' || !/^[0-9a-f]{64}$/.test(a)) return Promise.resolve(null);
+    return crypto.subtle.digest('SHA-256', new TextEncoder().encode(u)).then(function (h) {
+      var x = Array.prototype.map.call(new Uint8Array(h), function (b) { return (b < 16 ? '0' : '') + b.toString(16); }).join('');
+      return x === a ? u : null;
+    }).catch(function () { return null; });
+  }
+  function robotCall(url, req) {
+    return fetch(url, { method: 'POST', body: JSON.stringify(req) }).then(function (r) {
+      if (!r.ok) throw new Error('작은 로봇 답 ' + r.status);
+      return r.json();
+    });
+  }
+  /** 작은 로봇과 형님 창구 잇기 (연결 열쇠는 작은 로봇이 받아 둔다 — 폰에는 없음) */
+  function robotPair(url) { return robotCall(url, { a: 'pair', phone: load('phoneKey') }); }
+  /** 보내기 요청: 작은 로봇 장부면 그 주소로, 아니면 형님 창구로. 작은 로봇이 '아직 안 이어짐'이면 한 번 잇고 다시
+   *  ('아직 안 이어짐'은 작은 로봇이 메리츠를 부르기 전의 거절이라, 다시 보내도 두 번 들어가지 않는다) */
+  function sendCall(req) {
+    var sc = S.screen;
+    if (!sendTarget(sc)) return windowCall(req);
+    return config().then(function (c) { return robotUrl(sc, c); }).then(function (url) {
+      if (!url) return { ok: false, why: 'robot_unknown', message: '작은 로봇 주소가 앱 설정과 달라요(관리자에게 알려 주세요)' };   // 폰 열쇠를 아무 데도 안 보냄
+      return robotCall(url, req).then(function (r) {
+        if (!r || r.why !== 'not_paired' || !req.phone) return r;
+        return robotPair(url).then(function (p) { return p && p.ok ? robotCall(url, req) : r; });
+      });
+    });
+  }
+  /** 앱을 열 때 한 번: 작은 로봇이 형님 창구와 이어져 있는지 보고, 아니면 잇는다 (아침 대조도 이것이 있어야 돈다 — 보내기를 안 켠 때도) */
+  function robotCheck(sc) {
+    if (!sendTarget(sc) || S.other || S.robotAsked || !load('phoneKey') || testQ('sample') && !testQ('robot')) return;
+    S.robotAsked = true;
+    config().then(function (c) { return robotUrl(sc, c); }).then(function (url) {
+      if (!url) return;   // 앱 설정에 없는 주소로는 폰 열쇠를 안 보낸다
+      return robotCall(url, { a: 'ping' }).then(function (r) { if (r && r.ok && !r.paired) return robotPair(url); });
+    }).catch(function () { /* 다음에 열 때 다시 */ });
+  }
   /** 창구가 아직 보내는 중인 기록(끝난 때가 없음). '중간에 멈춤'은 창구가 자기 시계로 정한다(stale) — 폰 시계·폰에 남은 옛 기록으로 정하지 않는다 (다시 검토 11/5) */
   function sendLive(rec) { return !!rec && rec.done === false && !rec.stale; }
   /** 보낸 줄의 결과 한 줄 (설계서: ✓ 접수 = 초록 / 그 밖 = 주황 + 손으로 · 창구가 아직 보내는 중이면 흐린 글) */
@@ -317,7 +363,8 @@
     var checks = '<div class="prev chks">' + res.checks.map(function (x) { return '<div class="ck1 ' + (x.ok ? 'ok' : 'no') + '"><span>' + (x.ok ? '✓' : '✗') + '</span> ' + esc(x.text) + '</div>'; }).join('') + '</div>';
     var warn = !same ? '<div class="prev warn">화면의 주문과 창구가 본 주문이 달라요. 앱을 닫았다가 다시 열어 주세요.</div>'
       : !res.canSend ? '<div class="prev warn">' + esc(res.problems[0] || '보낼 수 없어요') + (res.problems.length > 1 ? ' (외 ' + (res.problems.length - 1) + '가지)' : '') + '<br>오늘 밤은 손으로 넣어 주세요.</div>' : '';
-    return '<p class="sp">' + C.mdw(res.session) + ' 밤 · 메리츠 ' + esc((S.screen && S.screen.name) || '') + ' 계좌 · SELL 먼저, BUY 나중으로 보내요</p>' +
+    var via = sendTarget(S.screen) ? ' · ' + esc((S.screen && S.screen.name) || '') + ' 작은 로봇이 보내요' + (S.screen.orderRobot.engine ? ' (' + esc(S.screen.orderRobot.engine) + ')' : '') : '';
+    return '<p class="sp">' + C.mdw(res.session) + ' 밤 · 메리츠 ' + esc((S.screen && S.screen.name) || '') + ' 계좌 · SELL 먼저, BUY 나중으로 보내요' + via + '</p>' +
       '<div>' + rows + '</div>' + checks + warn +
       '<div class="slide' + (ok ? '' : ' off') + '"><div class="strack" role="group" aria-label="밀어서 증권사로 보내기"><button class="sknob" type="button"' + (ok ? '' : ' disabled') +
         ' aria-label="끝까지 밀거나 길게 눌러 보내기">' + ARROW + '</button><div class="slab"><span class="t1">' + (ok ? '밀어서 증권사로 보내기' : '보낼 수 없어요') + '</span><span class="t2">' + res.orders.length + '건 · 끝까지 밀어야 보내져요</span></div>' +
@@ -366,7 +413,7 @@
     if (needPhone()) return;
     var Sh = { kind: 'send', state: 'loading' };
     S.sheet = Sh; renderOverlays();
-    windowCall({ a: 'send_check', phone: load('phoneKey') }).then(function (r) {
+    sendCall({ a: 'send_check', phone: load('phoneKey') }).then(function (r) {
       if (S.sheet !== Sh) return;
       if (!r.ok) { Sh.state = 'error'; Sh.err = r.message || why(r.why); renderOverlays(); return; }
       if (r.sent) { S.sendOpen = false; sendKeep(r.sent, Sh); toast('오늘 밤은 이미 보냈어요'); return; }
@@ -374,7 +421,8 @@
     }).catch(function (e) { if (S.sheet !== Sh) return; Sh.state = 'error'; Sh.err = '창구에 닿지 못했어요 (' + e.message + ')'; renderOverlays(); });
   }
   // 창구가 '보내기 전에' 거절한 까닭 — 이때만 '보내지 않았어요'라고 말한다. 그 밖(창구 오류·답 없음)은 보냈을 수도 있어 기록을 본다
-  var SEND_NOT_SENT = /^(changed|blocked|unknown_phone|not_on|no_key|stopped|unsaved)$/;
+  // 작은 로봇(자동주문 4단계)이 메리츠를 부르기 전에 거절한 것도: 안 이어짐 · 이 장부의 폰 아님 · 형님 창구에 못 닿음 · 작은 로봇을 안 쓰는 장부
+  var SEND_NOT_SENT = /^(changed|blocked|unknown_phone|not_on|no_key|stopped|unsaved|not_paired|not_owner|hyung|relay|not_relay|robot_unknown)$/;
   function doSend() {
     var Sh = S.sheet, res = Sh && Sh.res;
     if (!res || Sh.state !== 'ready') return;
@@ -382,7 +430,7 @@
     S.sendOpen = false;
     setTried({ id: S.screen && S.screen.id, session: res.session, at: now() });   // 답이 오기 전에 창이나 앱을 닫아도 보내기 칸을 다시 보이지 않게
     redrawHome();
-    windowCall({ a: 'send', phone: load('phoneKey'), session: res.session, digest: res.digest }).then(function (r) {
+    sendCall({ a: 'send', phone: load('phoneKey'), session: res.session, digest: res.digest }).then(function (r) {
       if (r.ok && r.rec) {
         sendKeep(r.rec, Sh);
         var n = r.rec.items.length, a = r.rec.items.filter(function (x) { return x.state === 'accepted'; }).length;
@@ -405,7 +453,7 @@
   /** 창구가 '바쁨'(20초 기다려도 잠금을 못 잡음): 이 요청은 안 보냈지만, 다른 보내기(두 번째 창 등)가 잠금을 쥐고 보내는 중일 수 있다.
    *  그런 보내기는 잠금을 잡자마자 기록부터 적으므로, 기록을 한 번 보고 없을 때만 '아직 안 보냈어요' (검토 11/5) */
   function sendBusy(Sh) {
-    windowCall({ a: 'send_status', phone: load('phoneKey') }).then(function (r) {
+    sendCall({ a: 'send_status', phone: load('phoneKey') }).then(function (r) {
       if (!r || !r.ok) throw new Error('status');
       var sc = S.screen, rec = r.rec && sc && sc.next && r.rec.session === sc.next.session && r.rec.id === sc.id ? r.rec : null;
       if (rec) { sendKeep(rec, Sh); toast('오늘 밤은 이미 보냈어요'); return; }
@@ -437,7 +485,7 @@
     if (!load('phoneKey')) return;
     if (!Sh && S.sheet && S.sheet.kind === 'send' && S.sheet.state === 'lost') Sh = S.sheet;   // [다시 확인]을 눌러도 열린 '답 없음' 창이 결과를 받게
     clearTimeout(S.sendPollT); S.sendPollT = null;
-    windowCall({ a: 'send_status', phone: load('phoneKey') }).then(function (r) {
+    sendCall({ a: 'send_status', phone: load('phoneKey') }).then(function (r) {
       if (!r || !r.ok) throw new Error(r && r.why || 'status');
       var sc = S.screen, rec = r.rec && sc && sc.next && r.rec.session === sc.next.session && r.rec.id === sc.id ? r.rec : null;
       if (rec) { sendKeep(rec, Sh); return; }
@@ -1355,7 +1403,9 @@
     return c >= 0xac00 && c <= 0xd7a3 && (c - 0xac00) % 28 ? '이' : '가';
   }
   function why(w) {
-    return { unknown_phone: '등록된 폰이 아니에요. 관리자에게 새 링크·PIN을 받아 주세요', stopped: '장부 기록이 바뀌어 로봇이 멈췄어요. 관리자가 확인하면 다시 돼요', busy: '창구가 바빠요. 잠시 뒤 다시', ledger: '장부를 읽지 못했어요', error: '창구에서 문제가 생겼어요' }[w] || ('저장하지 못했어요 (' + w + ')');
+    return { unknown_phone: '등록된 폰이 아니에요. 관리자에게 새 링크·PIN을 받아 주세요', stopped: '장부 기록이 바뀌어 로봇이 멈췄어요. 관리자가 확인하면 다시 돼요', busy: '창구가 바빠요. 잠시 뒤 다시', ledger: '장부를 읽지 못했어요', error: '창구에서 문제가 생겼어요',
+      not_paired: '작은 로봇이 아직 형님 창구와 이어지지 않았어요. 앱을 닫았다가 다시 열어 주세요', not_owner: '이 폰은 이 장부의 폰이 아니에요', hyung: '작은 로봇이 형님 창구에 닿지 못했어요. 잠시 뒤 다시',
+      relay: '이 장부는 작은 로봇으로 보내요. 앱을 닫았다가 다시 열어 주세요', no_key: '메리츠 열쇠가 없거나 모양이 틀려요', robot_unknown: '작은 로봇 주소가 앱 설정과 달라요(관리자에게 알려 주세요)' }[w] || ('저장하지 못했어요 (' + w + ')');
   }
   /** 미리보기 칸과 저장 단추만 다시 그린다 (적는 중인 칸은 그대로) */
   function paintPreview() {
@@ -2045,7 +2095,8 @@
     rememberMoments(sc);
     autoFlag(sc);
     // 자동주문 작은 B: 이 밤 보낸 기록 (앱을 열 때 한 번 — 다른 폰에서 보냈어도 보이게)
-    if (sc && sc.autoOrder && sc.next && !S.sendAsked && load('phoneKey') && !testQ('sample')) { S.sendAsked = true; sendRefresh(null); }
+    if (sc && sc.autoOrder && sc.next && !S.sendAsked && load('phoneKey') && (!testQ('sample') || testQ('robot'))) { S.sendAsked = true; sendRefresh(null); }
+    robotCheck(sc);   // 자동주문 4단계: 작은 로봇 장부면 형님 창구와 이어져 있게
   }
 
   function bootMsg(text) {
