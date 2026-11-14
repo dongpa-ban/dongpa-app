@@ -23,7 +23,7 @@
   if (window.navigator.standalone === true) document.documentElement.classList.add('iosapp');
   var Q = new URLSearchParams(location.search);
   var KEY = 'dongpa.v1.';
-  var APP_VERSION = 'b9da8a6-9';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
+  var APP_VERSION = '2b4863d-10';   // 화면 배포가 버전으로 바꿔 넣는다 (도구/화면_버전.mjs)
   // 시험 도우미(?sample·?src·?now·?moment·?tab·?every)는 저장소 판에서만. 배포된 앱에서는 무시한다 — 누가 ?src=로 가짜 주문표를 띄우는 링크를 못 만들게 (10/26 검토 AI)
   var DEV = APP_VERSION === 'dev';
   function testQ(k) { return DEV ? Q.get(k) : null; }
@@ -1169,7 +1169,10 @@
     else if (act === 'admin-close') { S.adminOpen = false; renderOverlays(); }
     else if (act === 'view') viewLedger(t.getAttribute('data-id'), t);
     else if (act === 'newlink') { S.sheet = { kind: 'confirm', id: t.getAttribute('data-id') || null, name: t.getAttribute('data-name') || '', all: !t.getAttribute('data-id'), self: !!t.getAttribute('data-self') }; renderOverlays(); }
-    else if (act === 'add') { S.sheet = { kind: 'add', name: '', bc: '5,000', msg: '' }; renderOverlays(); }
+    else if (act === 'add') { S.sheet = { kind: 'add', name: '', bc: '5,000', msg: '', placed: true }; renderOverlays(); }
+    else if (act === 'add-placed') { if (!S.sheet.busy) { addKeep(); S.sheet.placed = !S.sheet.placed; renderOverlays(); } }   // 만드는 중엔 안 바꿈 (검토 11/13)
+    else if (act === 'placed-ask') { S.sheet = { kind: 'placedset', id: t.getAttribute('data-id'), name: t.getAttribute('data-name') || '', on: t.getAttribute('data-on') !== '1' }; renderOverlays(); }
+    else if (act === 'placed-go') placedSet(t);
     else if (act === 'nl-go') makeLinks(t);
     else if (act === 'add-go') addPerson(t);
     else if (act === 'copy') copyMsg(Number(t.getAttribute('data-i')));
@@ -1689,7 +1692,8 @@
       return '<div class="prow"><div class="pl"><div class="av" style="background:' + c[0] + ';color:' + c[1] + '">' + esc(u.name.charAt(0)) + '</div>' +
         '<div><div class="pname">' + esc(u.name) + tags.map(function (t) { return '<span class="pill">' + t + '</span>'; }).join('') + '</div><div class="sub n">' + esc(meta) + '</div></div></div>' +
         '<div class="pact"><button class="btn sm ghost2 press" data-act="view" data-id="' + esc(u.id) + '"' + (u.admin ? ' disabled' : '') + '>장부 보기</button>' +
-        '<button class="btn sm ghost2 press" data-act="newlink" data-id="' + esc(u.id) + '" data-name="' + esc(u.name) + '"' + (u.admin ? ' data-self="1"' : '') + '>새 링크</button></div></div>';
+        '<button class="btn sm ghost2 press" data-act="newlink" data-id="' + esc(u.id) + '" data-name="' + esc(u.name) + '"' + (u.admin ? ' data-self="1"' : '') + '>새 링크</button>' +
+        '<button class="btn sm ghost2 press" data-act="placed-ask" data-id="' + esc(u.id) + '" data-name="' + esc(u.name) + '" data-on="' + (u.placedCheck ? '1' : '0') + '" aria-pressed="' + !!u.placedCheck + '">' + (u.placedCheck ? '넣음 단추 끄기' : '넣음 단추 켜기') + '</button></div></div>';
     }).join('');
     return '<section class="card"><div class="ch"><h2 class="ct">로봇</h2><span class="meta n">' + C.kstHm(now()) + ' 확인</span></div>' +
       rows.map(function (r) { return '<div class="srow">' + dot(r[0]) + '<span>' + r[1] + '</span><span class="meta n">' + esc(r[2]) + '</span></div>'; }).join('') + '</section>' +
@@ -1837,17 +1841,36 @@
       loadAdmin();
     }).catch(function (e) { btn.disabled = false; btn.textContent = '새 링크 만들기'; toast(e.message || '창구에 닿지 못했어요'); });
   }
+  /** 사람 추가 창을 다시 그리기 전에 넣은 이름·BC를 붙잡아 둔다 */
+  function addKeep() {
+    var n = document.getElementById('sh-name'), b = document.getElementById('sh-bc');
+    if (n) S.sheet.name = n.value;
+    if (b) S.sheet.bc = b.value;
+  }
   function addPerson(btn) {
     var nm = (document.getElementById('sh-name') || {}).value || '', bc = cents((document.getElementById('sh-bc') || {}).value);
     S.sheet.name = nm; S.sheet.bc = (document.getElementById('sh-bc') || {}).value || '';
     if (!nm.trim() || !bc) { S.sheet.msg = '이름과 시작 BC를 넣어 주세요'; renderOverlays(); return; }
-    btn.disabled = true; btn.textContent = '만드는 중…';
-    windowCall({ a: 'addperson', phone: load('phoneKey'), name: nm.trim(), bcCents: bc }).then(function (r) {
+    if (S.sheet.busy) return;
+    var Sa = S.sheet;
+    Sa.busy = true; btn.disabled = true; btn.textContent = '만드는 중…';
+    windowCall({ a: 'addperson', phone: load('phoneKey'), name: nm.trim(), bcCents: bc, placedCheck: S.sheet.placed !== false }).then(function (r) {
       if (!r.ok) throw new Error(r.message || why(r.why));
       S.sheet = { kind: 'done', links: r.links, isNew: true, first: r.first };
       renderOverlays();
       loadAdmin();
-    }).catch(function (e) { S.sheet.msg = e.message || '만들지 못했어요'; renderOverlays(); });
+    }).catch(function (e) { Sa.busy = false; if (S.sheet === Sa) { Sa.msg = e.message || '만들지 못했어요'; renderOverlays(); } else toast(e.message || '만들지 못했어요'); });
+  }
+  /** [증권사에 넣었어요] 단추 켜기·끄기 (관리자 폰만 — 창구 placedset, 11/13 형님) */
+  function placedSet(btn) {
+    var Sh = S.sheet;
+    btn.disabled = true; btn.textContent = '바꾸는 중…';
+    windowCall({ a: 'placedset', phone: load('phoneKey'), id: Sh.id, on: Sh.on }).then(function (r) {
+      if (!r.ok) throw new Error(r.message || why(r.why));
+      if (S.sheet === Sh) { S.sheet = null; renderOverlays(); }   // 답을 기다리는 동안 다른 창을 열었으면 그 창은 그대로 (검토 11/13)
+      toast(Sh.name + ' 넣음 단추를 ' + (Sh.on ? '켰어요' : '껐어요') + ' · 로봇이 곧 그 사람 화면에 반영해요');
+      loadAdmin();
+    }).catch(function (e) { if (btn.isConnected) { btn.disabled = false; btn.textContent = Sh.on ? '켜기' : '끄기'; } toast(e.message || '창구에 닿지 못했어요'); });
   }
   function copyMsg(i) {
     var l = S.sheet && S.sheet.links && S.sheet.links[i];
@@ -1876,6 +1899,12 @@
         : esc(Sh.name) + '의 옛 링크와 등록된 폰은 바로 안 열려요. 새 링크를 열고 PIN을 다시 넣어야 해요. 폰을 잃어버렸을 때도 이 단추를 써요.') + '</p>' +
         (Sh.self ? '<div class="prev warn">지금 이 폰도 끊겨요. 새 링크로 다시 등록하기 전까지는 관리를 못 써요.</div>' : '') +
         '<div class="two"><button class="btn ghost2 press" data-act="sheet-close">취소</button><button class="btn primary press" data-act="nl-go">새 링크 만들기</button></div>';
+    } else if (Sh.kind === 'placedset') {
+      title = esc(Sh.name) + '의 [증권사에 넣었어요] 단추를 ' + (Sh.on ? '켤까요?' : '끌까요?');
+      body = '<p class="sp">' + (Sh.on ? '오늘 밤 주문 밑에 [증권사에 넣었어요] 단추가 생겨요. 자동보내기를 안 쓰는 사람은 안 누른 밤 21시에 알림이 가요. 자동보내기를 쓰는 사람은 21시 알림 대신 보내기 잊음 알림이 오고, 손으로 넣은 밤에 이 단추를 누르면 그 알림이 안 와요.'
+        : '단추가 없어지고, 자동보내기를 안 쓰는 사람의 21시 알림도 없어져요. 자동보내기를 쓰는 사람은 꺼도 돼요 — 다만 손으로 넣은 밤에도 보내기 잊음 알림이 와요.') +
+        ' 로봇이 다음에 돌면(1분쯤) 그 사람 화면에 반영돼요.</p>' +
+        '<div class="two"><button class="btn ghost2 press" data-act="sheet-close">취소</button><button class="btn primary press" data-act="placed-go">' + (Sh.on ? '켜기' : '끄기') + '</button></div>';
     } else if (Sh.kind === 'send') {
       title = '오늘 밤 주문을 보낼까요?';
       body = sendSheetBody(Sh);
@@ -1885,8 +1914,9 @@
       body = '<div><label class="flabel" for="sh-name">이름 (띄어쓰기 없이)</label><input id="sh-name" class="field" value="' + esc(Sh.name) + '" placeholder="예: 친구B" autocomplete="off"></div>' +
         '<div><label class="flabel" for="sh-bc">시작 BC = 시작 현금 (달러)</label><input id="sh-bc" class="field n" inputmode="decimal" value="' + esc(Sh.bc) + '" autocomplete="off"></div>' +
         '<div class="prev' + (Sh.name && bcC ? '' : ' mute') + '">' + (Sh.name && bcC ? esc(Sh.name) + ' 장부를 만들어요: 시작 현금·BC ' + C.money(bcC) + ' · PCR 100% · LCR 50% · ' + N + ' 세션부터. 만들면 링크와 PIN이 나와요.' : '이름과 시작 BC를 넣어 주세요.') + '</div>' +
+        '<button class="ck press' + (Sh.placed !== false ? ' on' : '') + '" data-act="add-placed" role="checkbox" aria-checked="' + (Sh.placed !== false) + '"><span class="box">' + (Sh.placed !== false ? '✓' : '') + '</span>주문 넣음 확인 — 오늘 밤 주문 밑에 [증권사에 넣었어요] 단추, 자동보내기가 없으면 안 누른 밤 21시 알림</button>' +
         (Sh.msg ? '<div class="prev warn">' + esc(Sh.msg) + '</div>' : '') +
-        '<button class="btn primary wide press" data-act="add-go">만들고 링크 받기</button>';
+        '<button class="btn primary wide press" data-act="add-go"' + (Sh.busy ? ' disabled>만드는 중…' : '>만들고 링크 받기') + '</button>';
     } else {
       title = '보낼 메시지';
       body = '<p class="sp">카톡으로 한 사람씩 보내 주세요. 링크와 PIN은 그 사람에게만.</p>' + Sh.links.map(function (l, i) {
